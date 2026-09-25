@@ -48,7 +48,14 @@ ah e671b1          # open a session by id or unique id prefix
 ah path/to.jsonl   # open any transcript, including subagent ones
 ```
 
-In the list, type to filter and press Enter to open. In a session:
+<img src="docs/terminal-list.png" alt="The session list in a terminal: sessions from this directory, marked with an asterisk, then the rest by recency">
+
+In the list, type to filter and press Enter to open. A session opens with its
+thinking and tool calls folded:
+
+<img src="docs/terminal-session.png" alt="A Claude Code session in a terminal, with its thinking and tool calls folded between the messages">
+
+In a session:
 
 | Keys | |
 |---|---|
@@ -67,7 +74,10 @@ In the list, type to filter and press Enter to open. In a session:
 Copying uses OSC 52, which reaches your local clipboard over SSH. Inside tmux,
 set `set -g set-clipboard on`.
 
-Math is shown as Unicode (`ϕᵢⱼ(q) = 2πq·(dᵢ - dⱼ)`) rather than TeX source.
+Math is shown as Unicode (`ϕᵢⱼ(q) = 2πq·(dᵢ - dⱼ)`) rather than TeX source, as
+in this pi session in the answers view:
+
+<img src="docs/terminal-answers.png" alt="A pi session in the terminal's answers view, with its formulas and a table drawn in Unicode">
 
 ## Browser
 
