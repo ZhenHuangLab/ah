@@ -196,11 +196,20 @@ pub struct Transcript {
     pub info: Info,
     /// Bumped once per refresh; items touched during it carry the new value.
     pub rev: u64,
+    /// Where each tool call is, by id.
     tools: HashMap<String, (usize, usize)>,
+    /// Results written before their call (Claude Code can record a denied call that way).
+    early: HashMap<String, Output>,
+    /// Calls added without a result, for `end_turn`.
+    pending: Vec<(usize, usize)>,
 }
 
 impl Transcript {
     pub fn push(&mut self, role: Role, time: Option<i64>, blocks: Vec<Block>) -> usize {
+        // A prompt starts a new turn: none of the agents runs a call past it.
+        if role == Role::User {
+            self.end_turn();
+        }
         let idx = self.items.len();
         self.items.push(Item { role, time, blocks: Vec::new(), rev: self.rev });
         for b in blocks {
@@ -240,25 +249,48 @@ impl Transcript {
 
     /// Appends a tool call to the trailing assistant item and remembers it for `attach`.
     pub fn tool(&mut self, time: Option<i64>, id: &str, name: impl Into<String>, input: Value, output: Option<Output>) {
-        let tool = Tool { name: name.into(), input, output };
-        self.assistant(time, Block::Tool(tool));
+        let output = output.or_else(|| self.early.remove(id));
+        let waiting = output.is_none();
+        self.assistant(time, Block::Tool(Tool { name: name.into(), input, output }));
         let idx = self.items.len() - 1;
-        let b = self.items[idx].blocks.len() - 1;
+        let at = (idx, self.items[idx].blocks.len() - 1);
         if !id.is_empty() {
-            self.tools.insert(id.to_string(), (idx, b));
+            self.tools.insert(id.to_string(), at);
+        }
+        if waiting {
+            self.pending.push(at);
         }
     }
 
-    /// Records a tool result against its call. Returns false for an unknown id.
-    pub fn attach(&mut self, id: &str, output: Output) -> bool {
-        let Some(&(i, b)) = self.tools.get(id) else { return false };
+    /// Records a tool result against its call, or keeps it for a call not seen yet.
+    pub fn attach(&mut self, id: &str, output: Output) {
+        let Some(&(i, b)) = self.tools.get(id) else {
+            if !id.is_empty() {
+                self.early.insert(id.to_string(), output);
+            }
+            return;
+        };
         let rev = self.rev;
         let item = &mut self.items[i];
         if let Block::Tool(t) = &mut item.blocks[b] {
             t.output = Some(output);
             item.rev = rev;
         }
-        true
+    }
+
+    /// Marks calls still waiting for a result as having none, since their turn is over. A
+    /// result that turns up later still replaces the mark.
+    pub fn end_turn(&mut self) {
+        let rev = self.rev;
+        for (i, b) in std::mem::take(&mut self.pending) {
+            let item = &mut self.items[i];
+            if let Block::Tool(t) = &mut item.blocks[b]
+                && t.output.is_none()
+            {
+                t.output = Some(Output { text: "No result was recorded.".into(), error: true, images: Vec::new() });
+                item.rev = rev;
+            }
+        }
     }
 
     /// The notice of item `idx`, marked as changed.

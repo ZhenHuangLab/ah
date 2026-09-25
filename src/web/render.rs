@@ -203,13 +203,18 @@ fn cap(s: &str, max: usize) -> &str {
     &s[..n]
 }
 
-/// The image at `(i, b)`: an image block, or output image `k` of a tool call.
+/// The image at `(i, b)`: an image block, or output image `k` of a tool call. Only the raster
+/// formats that models accept are served; the transcript names the type, and an SVG or HTML
+/// payload opened on its own would run script on this origin.
 pub fn image(it: &Item, b: usize, k: Option<usize>) -> Option<(String, Vec<u8>)> {
     let img: &Image = match (it.blocks.get(b)?, k) {
         (Block::Image(img), None) => img,
         (Block::Tool(t), Some(k)) => t.output.as_ref()?.images.get(k)?,
         _ => return None,
     };
+    if !matches!(img.mime.as_str(), "image/png" | "image/jpeg" | "image/gif" | "image/webp") {
+        return None;
+    }
     let bytes = base64::engine::general_purpose::STANDARD.decode(img.data.as_bytes()).ok()?;
     Some((img.mime.clone(), bytes))
 }

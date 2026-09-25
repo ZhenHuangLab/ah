@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 
-use super::{Parser, data_url, iso_ms, output, take_str, ts};
+use super::{Parser, data_url, iso_ms, output, take, take_str, ts};
 use crate::model::{Block, Image, NoticeKind, Role, Transcript};
 
 /// User-role messages that Codex injects as context rather than typed prompts.
@@ -25,7 +25,7 @@ pub struct Codex;
 impl Parser for Codex {
     fn line(&mut self, t: &mut Transcript, mut v: Value) {
         let time = ts(&v);
-        let mut p = v["payload"].take();
+        let mut p = take(&mut v, "/payload");
         match v["type"].as_str().unwrap_or("") {
             "session_meta" => {
                 if t.info.id.is_none() {
@@ -42,7 +42,7 @@ impl Parser for Codex {
             }
             "response_item" => item(t, time, p),
             "compacted" => {
-                let msg = take_str(&mut p["message"]);
+                let msg = take_str(&mut p, "/message");
                 t.notice(time, NoticeKind::Compaction, "Context compacted", msg);
             }
             "event_msg" if p["type"].as_str() == Some("turn_aborted") => {
@@ -50,6 +50,7 @@ impl Parser for Codex {
                     Some("interrupted") | None => "Interrupted by user".to_string(),
                     Some(r) => format!("Turn aborted ({r})"),
                 };
+                t.end_turn();
                 t.notice(time, NoticeKind::Interrupt, label, "");
             }
             _ => {}
@@ -63,9 +64,9 @@ fn item(t: &mut Transcript, time: Option<i64>, mut p: Value) {
     match kind.as_str() {
         "message" => message(t, time, p),
         "reasoning" => {
-            let mut parts = texts(&mut p["summary"]);
+            let mut parts = texts(take(&mut p, "/summary"));
             if parts.iter().all(|s| s.trim().is_empty()) {
-                parts = texts(&mut p["content"]);
+                parts = texts(take(&mut p, "/content"));
             }
             let s = parts.join("\n\n");
             if !s.trim().is_empty() {
@@ -73,22 +74,22 @@ fn item(t: &mut Transcript, time: Option<i64>, mut p: Value) {
             }
         }
         "function_call" => {
-            let args = take_str(&mut p["arguments"]);
+            let args = take_str(&mut p, "/arguments");
             let input = serde_json::from_str(&args).unwrap_or(Value::String(args));
-            t.tool(time, &call_id, take_str(&mut p["name"]), input, None);
+            t.tool(time, &call_id, take_str(&mut p, "/name"), input, None);
         }
         "custom_tool_call" => {
-            let input = Value::String(take_str(&mut p["input"]));
-            t.tool(time, &call_id, take_str(&mut p["name"]), input, None);
+            let input = Value::String(take_str(&mut p, "/input"));
+            t.tool(time, &call_id, take_str(&mut p, "/name"), input, None);
         }
-        "local_shell_call" => t.tool(time, &call_id, "shell", p["action"].take(), None),
-        "tool_search_call" => t.tool(time, &call_id, "tool_search", p["arguments"].take(), None),
+        "local_shell_call" => t.tool(time, &call_id, "shell", take(&mut p, "/action"), None),
+        "tool_search_call" => t.tool(time, &call_id, "tool_search", take(&mut p, "/arguments"), None),
         "web_search_call" => {
             let done = output(String::new(), false, Vec::new());
-            t.tool(time, "", "web_search", p["action"].take(), Some(done));
+            t.tool(time, "", "web_search", take(&mut p, "/action"), Some(done));
         }
         "function_call_output" | "custom_tool_call_output" | "local_shell_call_output" => {
-            let (text, images, error) = result(p["output"].take());
+            let (text, images, error) = result(take(&mut p, "/output"));
             t.attach(&call_id, output(text, error, images));
         }
         "tool_search_output" => {
@@ -101,13 +102,13 @@ fn item(t: &mut Transcript, time: Option<i64>, mut p: Value) {
 
 fn message(t: &mut Transcript, time: Option<i64>, mut p: Value) {
     let role = p["role"].as_str().unwrap_or("").to_string();
-    let Value::Array(parts) = p["content"].take() else { return };
+    let Value::Array(parts) = take(&mut p, "/content") else { return };
     let mut texts = Vec::new();
     let mut images = Vec::new();
     for mut c in parts {
         match c["type"].as_str().unwrap_or("") {
             "input_text" | "output_text" | "text" => {
-                let s = take_str(&mut c["text"]);
+                let s = take_str(&mut c, "/text");
                 let bare = s.trim();
                 if !(bare.starts_with("<image") || bare == "</image>") {
                     texts.push(s);
@@ -142,23 +143,23 @@ fn message(t: &mut Transcript, time: Option<i64>, mut p: Value) {
     }
 }
 
-fn texts(v: &mut Value) -> Vec<String> {
+fn texts(v: Value) -> Vec<String> {
     match v {
-        Value::Array(a) => a.iter_mut().map(|x| take_str(&mut x["text"])).collect(),
+        Value::Array(a) => a.into_iter().map(|mut x| take_str(&mut x, "/text")).collect(),
         _ => Vec::new(),
     }
 }
 
 /// Text, images and error flag of a tool output, across the shapes Codex has used.
-fn result(v: Value) -> (String, Vec<Image>, bool) {
+fn result(mut v: Value) -> (String, Vec<Image>, bool) {
     match v {
         Value::String(s) => {
             // Older rollouts wrap shell output as `{"output": ..., "metadata": {"exit_code": n}}`.
             if s.starts_with('{')
                 && let Ok(mut o) = serde_json::from_str::<Value>(&s)
-                && let Some(text) = o["output"].as_str().map(String::from)
+                && let Value::String(text) = take(&mut o, "/output")
             {
-                let code = o["metadata"]["exit_code"].take().as_i64().unwrap_or(0);
+                let code = o["metadata"]["exit_code"].as_i64().unwrap_or(0);
                 return (text, Vec::new(), code != 0);
             }
             let error = exit_code(&s).is_some_and(|c| c != 0);
@@ -170,17 +171,16 @@ fn result(v: Value) -> (String, Vec<Image>, bool) {
             for mut c in parts {
                 match c["type"].as_str().unwrap_or("") {
                     "input_image" => images.extend(c["image_url"].as_str().and_then(data_url)),
-                    _ => texts.push(take_str(&mut c["text"])),
+                    _ => texts.push(take_str(&mut c, "/text")),
                 }
             }
             let text = texts.join("\n");
             let error = exit_code(&text).is_some_and(|c| c != 0);
             (text, images, error)
         }
-        Value::Object(mut o) => {
-            let text = o.get_mut("content").map(take_str).unwrap_or_default();
-            let error = o.get("success").and_then(Value::as_bool) == Some(false);
-            (text, Vec::new(), error)
+        Value::Object(_) => {
+            let error = v["success"].as_bool() == Some(false);
+            (take_str(&mut v, "/content"), Vec::new(), error)
         }
         _ => (String::new(), Vec::new(), false),
     }

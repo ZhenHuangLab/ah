@@ -5,16 +5,16 @@ mod render;
 
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
-use std::fs;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
+use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
@@ -26,7 +26,7 @@ use serde_json::json;
 use tokio::sync::broadcast::{self, error::RecvError};
 use tower_http::compression::CompressionLayer;
 
-use crate::discover::{self, Roots, mtime_ms};
+use crate::discover::{self, Roots};
 use crate::live::Live;
 use crate::model::SessionMeta;
 
@@ -57,13 +57,19 @@ struct Index {
 }
 
 impl Index {
+    /// Adds or updates a session. A known file keeps its id; a file that moved (Codex
+    /// archives a session by moving it) takes over the id of the path it left.
     fn insert(&mut self, mut m: SessionMeta) -> SessionMeta {
         if let Some(old) = self.by_path.get(&m.path) {
             m.id = old.clone();
         } else {
             let base = m.id.clone();
             let mut n = 1;
-            while self.by_id.contains_key(&m.id) {
+            while let Some(other) = self.by_id.get(&m.id) {
+                if !other.path.exists() {
+                    self.by_path.remove(&other.path);
+                    break;
+                }
                 n += 1;
                 m.id = format!("{base}~{n}");
             }
@@ -111,6 +117,7 @@ async fn run(addrs: Vec<SocketAddr>) -> Result<()> {
         .route("/api/s/{id}/run/{item}/{block}", get(run_rows))
         .route("/api/s/{id}/img/{item}/{block}", get(image))
         .layer(CompressionLayer::new())
+        .layer(middleware::from_fn(check_host))
         .with_state(st);
 
     let mut servers = Vec::new();
@@ -124,6 +131,27 @@ async fn run(addrs: Vec<SocketAddr>) -> Result<()> {
         _ = tokio::signal::ctrl_c() => Ok(()),
         (res, _, _) = futures_util::future::select_all(servers) => Ok(res??),
     }
+}
+
+/// Refuses requests that name this server by a host name someone else could control. The API
+/// has no login, so a web page whose domain resolves here (DNS rebinding) must not be able to
+/// read it. IP addresses, names without a dot (`localhost`, Tailscale's short names) and
+/// Tailscale's `*.ts.net` names are accepted.
+async fn check_host(req: Request, next: Next) -> Response {
+    let host = req.headers().get(header::HOST).and_then(|h| h.to_str().ok()).or_else(|| req.uri().authority().map(|a| a.as_str()));
+    if host.is_none_or(local_host) {
+        next.run(req).await
+    } else {
+        (StatusCode::FORBIDDEN, "ah: open this page by IP address, localhost or the machine's Tailscale name\n").into_response()
+    }
+}
+
+fn local_host(host: &str) -> bool {
+    if host.starts_with('[') {
+        return true;
+    }
+    let name = host.rsplit_once(':').map_or(host, |(name, _)| name).trim_end_matches('.').to_ascii_lowercase();
+    name.parse::<Ipv4Addr>().is_ok() || !name.contains('.') || name.ends_with(".ts.net")
 }
 
 fn asset(path: &str) -> Response {
@@ -142,9 +170,28 @@ impl AppState {
         let meta = self.index.read().unwrap().by_id.get(id).cloned().ok_or(StatusCode::NOT_FOUND)?;
         let path = meta.path.clone();
         let live = Live::open(meta).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let mut open = self.open.lock().unwrap();
-        let o = open.entry(id.to_string()).or_insert_with(|| Open { live: Arc::new(Mutex::new(live)), path, used: Instant::now() });
-        Ok(o.live.clone())
+        let live = {
+            let mut open = self.open.lock().unwrap();
+            open.entry(id.to_string()).or_insert_with(|| Open { live: Arc::new(Mutex::new(live)), path, used: Instant::now() }).live.clone()
+        };
+        let title = {
+            // `changed` skipped writes made while the file was being parsed, since the
+            // session was not open yet.
+            let mut l = live.lock().unwrap();
+            if let Ok(true) = l.refresh() {
+                let _ = self.tx.send(Change::Live(id.to_string()));
+            }
+            l.meta.title.clone()
+        };
+        // The whole file may name the session where the list scan did not look.
+        let mut idx = self.index.write().unwrap();
+        if let Some(m) = idx.by_id.get_mut(id)
+            && m.title != title
+        {
+            m.title = title;
+            let _ = self.tx.send(Change::Meta(m.clone()));
+        }
+        Ok(live)
     }
 
     /// Applies a change to `path`: refreshes open sessions and the index.
@@ -160,7 +207,7 @@ impl AppState {
             title = Some(l.meta.title.clone());
         }
         let Some(agent) = self.roots.classify(path) else { return };
-        let Ok(md) = fs::metadata(path) else {
+        let Some(mut m) = discover::meta(agent, path, true) else {
             let mut idx = self.index.write().unwrap();
             if let Some(id) = idx.by_path.remove(path) {
                 idx.by_id.remove(&id);
@@ -168,24 +215,11 @@ impl AppState {
             }
             return;
         };
-        let known = self.index.read().unwrap().by_path.get(path).cloned();
-        let meta = match known {
-            Some(id) => {
-                let mut idx = self.index.write().unwrap();
-                let Some(m) = idx.by_id.get_mut(&id) else { return };
-                m.size = md.len();
-                m.modified = mtime_ms(&md);
-                if let Some(t) = title {
-                    m.title = t;
-                }
-                m.clone()
-            }
-            None => match discover::meta(agent, path, true) {
-                Some(m) => self.index.write().unwrap().insert(m),
-                None => return,
-            },
-        };
-        let _ = self.tx.send(Change::Meta(meta));
+        if let Some(t) = title {
+            m.title = t;
+        }
+        let m = self.index.write().unwrap().insert(m);
+        let _ = self.tx.send(Change::Meta(m));
     }
 
     fn evict(&self) {
@@ -197,13 +231,7 @@ impl AppState {
 /// coalescing bursts of writes.
 fn watch(st: Shared) -> Result<()> {
     let (tx, rx) = std::sync::mpsc::channel::<PathBuf>();
-    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        if let Ok(ev) = res {
-            for p in ev.paths.into_iter().filter(|p| p.extension().is_some_and(|e| e == "jsonl")) {
-                let _ = tx.send(p);
-            }
-        }
-    })?;
+    let mut watcher = discover::watcher(tx)?;
     for dir in st.roots.dirs() {
         watcher.watch(dir, RecursiveMode::Recursive).with_context(|| format!("watching {}", dir.display()))?;
     }
@@ -259,7 +287,8 @@ async fn events(State(st): State<Shared>) -> Response {
                 Ok(Change::Meta(m)) => Event::default().event("meta").json_data(&m).ok()?,
                 Ok(Change::Gone(id)) => Event::default().event("gone").data(id),
                 Ok(Change::Live(_)) => continue,
-                Err(RecvError::Lagged(_)) => Event::default().event("reload").data(""),
+                // Browsers drop events without data.
+                Err(RecvError::Lagged(_)) => Event::default().event("reload").data("sessions"),
                 Err(RecvError::Closed) => return None,
             };
             return Some((Ok(ev), rx));
@@ -321,7 +350,7 @@ async fn session_events(State(st): State<Shared>, Path(id): Path<String>, Query(
                 if l.generation != s.generation {
                     s.generation = l.generation;
                     s.rev = l.t.rev;
-                    Some(Event::default().event("reset").data(""))
+                    Some(Event::default().event("reset").data(l.generation.to_string()))
                 } else if l.t.rev > s.rev {
                     let data = json!({ "rev": l.t.rev, "meta": render::meta(&l), "items": render::since(&l, s.rev) });
                     s.rev = l.t.rev;
@@ -372,7 +401,12 @@ async fn image(
         let live = st.live(&id)?;
         let l = live.lock().unwrap();
         let (mime, bytes) = l.t.items.get(i).and_then(|it| render::image(it, b, q.k)).ok_or(StatusCode::NOT_FOUND)?;
-        Ok(([(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, "public, max-age=86400".into())], bytes).into_response())
+        let headers = [
+            (header::CONTENT_TYPE, mime),
+            (header::CACHE_CONTROL, "public, max-age=86400".into()),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff".into()),
+        ];
+        Ok((headers, bytes).into_response())
     })
     .await
 }

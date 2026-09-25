@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use super::{Parser, fence, one_line, output, take_str, task, tokens, ts};
+use super::{Parser, fence, one_line, output, take, take_str, task, tokens, ts};
 use crate::model::{Block, Image, NoticeKind, Role, Transcript};
 
 #[derive(Default)]
@@ -37,16 +37,16 @@ impl Parser for Pi {
             rewind = Some(t.notice(time, NoticeKind::Rewind, label, ""));
         }
         match kind.as_str() {
-            "message" => message(t, time, v["message"].take()),
+            "message" => message(t, time, take(&mut v, "/message")),
             "compaction" => {
                 let mut label = String::from("Context compacted");
                 if let Some(n) = v["tokensBefore"].as_u64() {
                     label.push_str(&format!(" · {} tokens", tokens(n)));
                 }
-                t.notice(time, NoticeKind::Compaction, label, take_str(&mut v["summary"]));
+                t.notice(time, NoticeKind::Compaction, label, take_str(&mut v, "/summary"));
             }
             "branch_summary" => {
-                let summary = take_str(&mut v["summary"]);
+                let summary = take_str(&mut v, "/summary");
                 match rewind.and_then(|i| t.notice_mut(i)) {
                     Some(n) => n.body = summary,
                     None => {
@@ -95,7 +95,7 @@ impl Pi {
 fn message(t: &mut Transcript, time: Option<i64>, mut m: Value) {
     match m["role"].as_str().unwrap_or("") {
         "user" => {
-            let (text, images) = content(m["content"].take());
+            let (text, images) = content(take(&mut m, "/content"));
             let mut blocks = Vec::new();
             if !text.trim().is_empty() {
                 blocks.push(Block::Text(text));
@@ -109,35 +109,38 @@ fn message(t: &mut Transcript, time: Option<i64>, mut m: Value) {
             if let Some(model) = m["model"].as_str() {
                 t.info.model = Some(model.to_string());
             }
-            if let Value::Array(blocks) = m["content"].take() {
+            if let Value::Array(blocks) = take(&mut m, "/content") {
                 for mut b in blocks {
                     match b["type"].as_str().unwrap_or("") {
                         "text" => {
-                            let s = take_str(&mut b["text"]);
+                            let s = take_str(&mut b, "/text");
                             if !s.trim().is_empty() {
                                 t.assistant(time, Block::Text(s));
                             }
                         }
                         "thinking" => {
-                            let s = take_str(&mut b["thinking"]);
+                            let s = take_str(&mut b, "/thinking");
                             if !s.trim().is_empty() && b["redacted"].as_bool() != Some(true) {
                                 t.assistant(time, Block::Thinking(s));
                             }
                         }
                         "toolCall" => {
                             let id = b["id"].as_str().unwrap_or("").to_string();
-                            t.tool(time, &id, take_str(&mut b["name"]), b["arguments"].take(), None);
+                            t.tool(time, &id, take_str(&mut b, "/name"), take(&mut b, "/arguments"), None);
                         }
                         _ => {}
                     }
                 }
             }
+            // Calls in a message that failed or was aborted never run.
             let error = m["errorMessage"].as_str().unwrap_or("");
             match m["stopReason"].as_str() {
                 Some("error") => {
+                    t.end_turn();
                     t.notice(time, NoticeKind::Error, one_line(error, 200), "");
                 }
                 Some("aborted") => {
+                    t.end_turn();
                     t.notice(time, NoticeKind::Interrupt, "Interrupted", "");
                 }
                 _ => {}
@@ -146,12 +149,12 @@ fn message(t: &mut Transcript, time: Option<i64>, mut m: Value) {
         "toolResult" => {
             let id = m["toolCallId"].as_str().unwrap_or("").to_string();
             let error = m["isError"].as_bool().unwrap_or(false);
-            let (text, images) = content(m["content"].take());
+            let (text, images) = content(take(&mut m, "/content"));
             t.attach(&id, output(text, error, images));
         }
         "bashExecution" => {
-            let cmd = take_str(&mut m["command"]);
-            let out = super::strip_ansi(&take_str(&mut m["output"]));
+            let cmd = take_str(&mut m, "/command");
+            let out = super::strip_ansi(&take_str(&mut m, "/output"));
             let body = if out.trim().is_empty() { String::new() } else { fence(&out, "") };
             t.notice(time, NoticeKind::Shell, format!("! {cmd}"), body);
         }
@@ -162,9 +165,9 @@ fn message(t: &mut Transcript, time: Option<i64>, mut m: Value) {
 
 /// A message an extension shows in pi's interface.
 fn custom(t: &mut Transcript, time: Option<i64>, v: &mut Value) {
-    let (body, _) = content(v["content"].take());
+    let (body, _) = content(take(v, "/content"));
     if !task(t, time, &body) {
-        t.notice(time, NoticeKind::Info, take_str(&mut v["customType"]), body);
+        t.notice(time, NoticeKind::Info, take_str(v, "/customType"), body);
     }
 }
 
@@ -177,10 +180,10 @@ fn content(v: Value) -> (String, Vec<Image>) {
             let mut images = Vec::new();
             for mut b in blocks {
                 match b["type"].as_str() {
-                    Some("text") => texts.push(take_str(&mut b["text"])),
+                    Some("text") => texts.push(take_str(&mut b, "/text")),
                     Some("image") => {
                         let mime = b["mimeType"].as_str().unwrap_or("image/png").to_string();
-                        images.push(super::image(&mime, take_str(&mut b["data"])));
+                        images.push(super::image(&mime, take_str(&mut b, "/data")));
                     }
                     _ => {}
                 }

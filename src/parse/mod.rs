@@ -36,8 +36,23 @@ pub fn iso_ms(s: &str) -> Option<i64> {
     s.parse::<jiff::Timestamp>().ok().map(|t| t.as_millisecond())
 }
 
-fn take_str(v: &mut Value) -> String {
-    match v.take() {
+/// Parses one JSONL line. NUL bytes that an interrupted write left around the record are
+/// skipped; lines that are not JSON objects give `None`.
+pub fn record(line: &[u8]) -> Option<Value> {
+    let start = line.iter().position(|&b| b != 0)?;
+    let end = line.iter().rposition(|&b| b != 0)? + 1;
+    serde_json::from_slice(&line[start..end]).ok().filter(Value::is_object)
+}
+
+/// Moves the value at JSON pointer `path` (`/message/content`) out of `v`, leaving null.
+/// A path that is missing or runs through a value of another shape gives null; indexing a
+/// `Value` mutably would panic there, and transcripts are not ours to trust.
+fn take(v: &mut Value, path: &str) -> Value {
+    v.pointer_mut(path).map(Value::take).unwrap_or_default()
+}
+
+fn take_str(v: &mut Value, path: &str) -> String {
+    match take(v, path) {
         Value::String(s) => s,
         _ => String::new(),
     }

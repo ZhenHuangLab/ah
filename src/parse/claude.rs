@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 
-use super::{Parser, fence, one_line, output, strip_ansi, tag, take_str, task, tokens, ts};
+use super::{Parser, fence, one_line, output, strip_ansi, tag, take, take_str, task, tokens, ts};
 use crate::model::{Block, Image, NoticeKind, Role, Transcript};
 
 #[derive(Default)]
@@ -55,7 +55,7 @@ impl Parser for Claude {
 
 impl Claude {
     fn user(&mut self, t: &mut Transcript, time: Option<i64>, mut v: Value) {
-        let content = v["message"]["content"].take();
+        let content = take(&mut v, "/message/content");
         if v["isCompactSummary"].as_bool() == Some(true) {
             let (text, _) = content_parts(content);
             match self.compaction.take().and_then(|i| t.notice_mut(i)) {
@@ -76,10 +76,10 @@ impl Claude {
                         Some("tool_result") => {
                             let id = b["tool_use_id"].as_str().unwrap_or("").to_string();
                             let error = b["is_error"].as_bool().unwrap_or(false);
-                            let (text, imgs) = content_parts(b["content"].take());
+                            let (text, imgs) = content_parts(take(&mut b, "/content"));
                             t.attach(&id, output(text, error, imgs));
                         }
-                        Some("text") => texts.push(take_str(&mut b["text"])),
+                        Some("text") => texts.push(take_str(&mut b, "/text")),
                         Some("image") => images.extend(image(&mut b)),
                         _ => {}
                     }
@@ -167,36 +167,35 @@ impl Claude {
     }
 
     fn assistant(&mut self, t: &mut Transcript, time: Option<i64>, v: &mut Value) {
-        let api_error = v["isApiErrorMessage"].as_bool() == Some(true);
-        let msg = &mut v["message"];
-        if api_error {
-            let (text, _) = content_parts(msg["content"].take());
+        let content = take(v, "/message/content");
+        if v["isApiErrorMessage"].as_bool() == Some(true) {
+            let (text, _) = content_parts(content);
             t.notice(time, NoticeKind::Error, one_line(&text, 200), "");
             return;
         }
-        if let Some(m) = msg["model"].as_str().filter(|m| !m.starts_with('<')) {
+        if let Some(m) = v["message"]["model"].as_str().filter(|m| !m.starts_with('<')) {
             t.info.model = Some(m.to_string());
         }
-        let Value::Array(blocks) = msg["content"].take() else { return };
+        let Value::Array(blocks) = content else { return };
         for mut b in blocks {
             let kind = b["type"].as_str().unwrap_or("").to_string();
             match kind.as_str() {
                 "text" => {
-                    let s = take_str(&mut b["text"]);
+                    let s = take_str(&mut b, "/text");
                     if !s.trim().is_empty() {
                         t.assistant(time, Block::Text(s));
                     }
                 }
                 "thinking" => {
-                    let s = take_str(&mut b["thinking"]);
+                    let s = take_str(&mut b, "/thinking");
                     if !s.trim().is_empty() {
                         t.assistant(time, Block::Thinking(s));
                     }
                 }
                 "tool_use" | "server_tool_use" => {
                     let id = b["id"].as_str().unwrap_or("").to_string();
-                    let name = take_str(&mut b["name"]);
-                    t.tool(time, &id, name, b["input"].take(), None);
+                    let name = take_str(&mut b, "/name");
+                    t.tool(time, &id, name, take(&mut b, "/input"), None);
                 }
                 "image" => {
                     if let Some(i) = image(&mut b) {
@@ -234,11 +233,11 @@ impl Claude {
                 self.compaction = Some(t.notice(time, NoticeKind::Compaction, label, ""));
             }
             "local_command" => {
-                let s = take_str(&mut v["content"]);
+                let s = take_str(v, "/content");
                 self.special(t, time, &s);
             }
             "informational" | "api_error" => {
-                let s = take_str(&mut v["content"]);
+                let s = take_str(v, "/content");
                 if !s.trim().is_empty() {
                     let kind = match v["level"].as_str() {
                         Some("error") => NoticeKind::Error,
@@ -253,11 +252,10 @@ impl Claude {
 
     /// Messages typed while Claude was busy are stored as `queued_command` attachments.
     fn attachment(&mut self, t: &mut Transcript, time: Option<i64>, v: &mut Value) {
-        let a = &mut v["attachment"];
-        if a["type"].as_str() != Some("queued_command") {
+        if v["attachment"]["type"].as_str() != Some("queued_command") {
             return;
         }
-        let (prompt, images) = content_parts(a["prompt"].take());
+        let (prompt, images) = content_parts(take(v, "/attachment/prompt"));
         if prompt.trim().is_empty() || self.special(t, time, &prompt) {
             return;
         }
@@ -276,7 +274,7 @@ fn content_parts(v: Value) -> (String, Vec<Image>) {
             let mut images = Vec::new();
             for mut b in blocks {
                 match b["type"].as_str() {
-                    Some("text") => texts.push(take_str(&mut b["text"])),
+                    Some("text") => texts.push(take_str(&mut b, "/text")),
                     Some("image") => images.extend(image(&mut b)),
                     _ => {}
                 }
@@ -288,10 +286,9 @@ fn content_parts(v: Value) -> (String, Vec<Image>) {
 }
 
 fn image(b: &mut Value) -> Option<Image> {
-    let src = &mut b["source"];
-    if src["type"].as_str() != Some("base64") {
+    if b["source"]["type"].as_str() != Some("base64") {
         return None;
     }
-    let mime = src["media_type"].as_str().unwrap_or("image/png").to_string();
-    Some(super::image(&mime, take_str(&mut src["data"])))
+    let mime = b["source"]["media_type"].as_str().unwrap_or("image/png").to_string();
+    Some(super::image(&mime, take_str(b, "/source/data")))
 }

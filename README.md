@@ -54,7 +54,10 @@ ah serve
 
 This listens on the machine's Tailscale address and on 127.0.0.1, port 7447,
 so any device on the tailnet can open `http://<machine>:7447/`. Use
-`--addr IP:PORT` (repeatable) to choose other addresses.
+`--addr IP:PORT` (repeatable) to choose other addresses. There is no login, so
+the server only answers requests that name it by IP address, `localhost` or its
+Tailscale name (`machine` or `machine.<tailnet>.ts.net`); this keeps web pages
+from reaching it through DNS rebinding.
 
 The page renders Markdown and math, folds tool calls (details load when opened),
 has a rail of the conversation's turns on the right that previews each turn on

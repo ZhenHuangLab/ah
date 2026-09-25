@@ -2,9 +2,12 @@
 
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
 use std::time::UNIX_EPOCH;
+
+use notify::RecommendedWatcher;
 
 use crate::markdown;
 use crate::model::{Agent, SessionMeta, Transcript};
@@ -89,11 +92,26 @@ impl Roots {
     }
 }
 
+/// A file watcher that sends the path of each transcript written, created, renamed or removed.
+/// On Linux, opening a file is reported as well; those events are dropped, or reading a changed
+/// transcript would report it changed again.
+pub fn watcher(tx: Sender<PathBuf>) -> notify::Result<RecommendedWatcher> {
+    notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let Ok(ev) = res else { return };
+        if ev.kind.is_access() {
+            return;
+        }
+        for p in ev.paths.into_iter().filter(|p| p.extension().is_some_and(|e| e == "jsonl")) {
+            let _ = tx.send(p);
+        }
+    })
+}
+
 /// Guesses the agent of an arbitrary transcript from its first record.
 pub fn sniff(path: &Path) -> Option<Agent> {
-    let mut first = String::new();
-    BufReader::new(File::open(path).ok()?).read_line(&mut first).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&first).ok()?;
+    let mut first = Vec::new();
+    BufReader::new(File::open(path).ok()?).read_until(b'\n', &mut first).ok()?;
+    let v = parse::record(&first)?;
     Some(match v["type"].as_str() {
         Some("session_meta") => Agent::Codex,
         Some("session") if v.get("version").is_some() => Agent::Pi,
@@ -105,9 +123,10 @@ pub fn mtime_ms(md: &fs::Metadata) -> i64 {
     md.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as i64)
 }
 
-/// Reads records until the first prompt to fill in id, working directory and title.
-/// With `listed`, returns `None` for subagent transcripts and sessions without any prompt,
-/// which are left out of session lists.
+/// Reads records until the first prompt to fill in id, working directory and title, and
+/// looks for a name given to the session near the end of the file. With `listed`, returns
+/// `None` for subagent transcripts and sessions without any prompt, which are left out of
+/// session lists.
 pub fn meta(agent: Agent, path: &Path, listed: bool) -> Option<SessionMeta> {
     let md = fs::metadata(path).ok()?;
     let mut rd = BufReader::with_capacity(1 << 16, File::open(path).ok()?);
@@ -120,7 +139,7 @@ pub fn meta(agent: Agent, path: &Path, listed: bool) -> Option<SessionMeta> {
             Ok(0) | Err(_) => break,
             Ok(_) => {}
         }
-        if let Ok(v) = serde_json::from_slice(&buf) {
+        if let Some(v) = parse::record(&buf) {
             parser.line(&mut t, v);
         }
         if listed && t.info.subagent {
@@ -146,11 +165,35 @@ pub fn meta(agent: Agent, path: &Path, listed: bool) -> Option<SessionMeta> {
         agent,
         path: path.to_path_buf(),
         cwd: t.info.cwd.clone().unwrap_or_default(),
-        title: t.info.title.clone().or(prompt).unwrap_or_else(|| stem.to_string()),
+        title: tail_title(agent, path, md.len()).or(t.info.title).or(prompt).unwrap_or_else(|| stem.to_string()),
         started: t.info.started.unwrap_or(modified),
         modified,
         size: md.len(),
     })
+}
+
+/// How much of the end of a file is searched for the session's name. Claude Code writes the
+/// name again whenever half this much has been appended, so the end always holds it.
+const TAIL: u64 = 64 * 1024;
+
+/// The latest name given to the session (Claude `/rename`, pi `/name`) within the end of the
+/// file. Opening the session reads the whole file and finds a name set further back.
+fn tail_title(agent: Agent, path: &Path, len: u64) -> Option<String> {
+    let mut f = File::open(path).ok()?;
+    let start = len.saturating_sub(TAIL);
+    f.seek(SeekFrom::Start(start)).ok()?;
+    let mut buf = Vec::new();
+    f.take(TAIL).read_to_end(&mut buf).ok()?;
+    let mut lines = buf.split(|&b| b == b'\n');
+    if start > 0 {
+        lines.next();
+    }
+    let mut parser = parse::new(agent);
+    let mut t = Transcript::default();
+    for v in lines.filter_map(parse::record) {
+        parser.line(&mut t, v);
+    }
+    t.info.title
 }
 
 /// Lists every session, reading files in parallel. Sorted newest first.
