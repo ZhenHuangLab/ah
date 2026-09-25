@@ -22,8 +22,12 @@ const S = {
   follow: true,
   // Until this time, growing content keeps the view pinned to the bottom.
   stickUntil: 0,
+  // The scroll position pin() last set.
+  pinned: -1,
   turns: [],
   on: -1,
+  // A turn picked with the keys or the rail, kept marked while the view stays where the jump left it.
+  held: null,
 };
 
 // ---------- helpers ----------
@@ -167,13 +171,20 @@ async function open(id, target) {
   if (token !== S.opening) return;
   if (!r.ok) {
     S.cur = null;
+    S.turns = [];
+    S.on = -1;
     conv.innerHTML = '';
+    ticks.innerHTML = '';
+    $('#title').textContent = 'ah';
+    $('#sub').innerHTML = '';
+    document.title = 'ah';
     $('#empty').textContent = r.status === 404 ? 'No such session.' : 'Could not load this session.';
     return;
   }
   const snap = await r.json();
   if (token !== S.opening) return;
   S.cur = { id, gen: snap.gen, rev: snap.rev, meta: snap.meta, items: [], els: [] };
+  S.held = null;
   conv.innerHTML = '';
   for (const it of snap.items) put(it);
   renderHead();
@@ -207,7 +218,7 @@ function subscribe() {
     else $('#bottom').hidden = false;
   });
   es.addEventListener('reset', () => {
-    if (S.cur === c) open(c.id, topItem());
+    if (S.cur === c) open(c.id, S.follow ? null : topItem());
   });
   // Reconnect by hand so the request carries the latest revision.
   es.onerror = () => {
@@ -225,8 +236,10 @@ function put(it) {
   c.items[it.i] = it;
   let el = c.els[it.i];
   // Folds the reader opened stay open when the item is re-rendered, including ones inside
-  // content that loads later.
+  // content that loads later. Until they have loaded again the item keeps its height, so the
+  // view does not jump.
   const keep = el ? new Set($$('details[open]', el).map(d => d.dataset.k)) : null;
+  if (keep && keep.size) el.style.minHeight = el.offsetHeight + 'px';
   if (!el) {
     el = document.createElement('article');
     el.id = 'i-' + it.i;
@@ -245,6 +258,7 @@ function put(it) {
   el.innerHTML = it.html + acts;
   el.keep = keep;
   if (keep) reopen(el, keep);
+  settle(el);
   seen.observe(el);
 }
 
@@ -304,24 +318,39 @@ function clamp(p) {
 }
 
 function reopen(el, keep) {
-  for (const d of $$('details[data-k]', el)) if (keep.has(d.dataset.k)) d.open = true;
+  for (const d of $$('details[data-k]', el)) {
+    if (!keep.has(d.dataset.k)) continue;
+    d.open = true;
+    // Load now rather than on the toggle event, so the item counts the load before its
+    // parent's finishes.
+    if (d.dataset.src && !d.dataset.loaded) loadBody(d);
+  }
+}
+
+/** Releases the height an item kept for its reopened folds once they have all loaded. */
+function settle(item) {
+  if (!item.pending) item.style.minHeight = '';
 }
 
 /** Fetches the content of a fold (tool rows and details, thinking, notice body) when it is opened. */
 async function loadBody(d) {
   d.dataset.loaded = '1';
+  const item = d.closest('.item');
   const body = $(':scope > .body', d);
   body.innerHTML = '<div class="sec-t">loading…</div>';
+  item.pending = (item.pending || 0) + 1;
   try {
     const r = await fetch(d.dataset.src);
     if (!r.ok) throw new Error(r.status);
     body.innerHTML = await r.text();
-    const item = d.closest('.item');
-    if (item && item.keep) reopen(body, item.keep);
+    if (item.keep) reopen(body, item.keep);
     enhance(body);
   } catch (_) {
     body.innerHTML = '<div class="sec-t">could not load</div>';
     delete d.dataset.loaded;
+  } finally {
+    item.pending--;
+    settle(item);
   }
 }
 
@@ -334,12 +363,17 @@ function atBottom() {
 function stick() {
   S.follow = true;
   S.stickUntil = Date.now() + 1500;
-  scroller.scrollTop = scroller.scrollHeight;
+  pin();
   $('#bottom').hidden = true;
 }
 
+function pin() {
+  scroller.scrollTop = scroller.scrollHeight;
+  S.pinned = scroller.scrollTop;
+}
+
 new ResizeObserver(() => {
-  if (S.follow && Date.now() < S.stickUntil) scroller.scrollTop = scroller.scrollHeight;
+  if (S.follow && Date.now() < S.stickUntil) pin();
 }).observe(conv);
 
 /** Index of the first visible item at the top of the view. */
@@ -373,20 +407,28 @@ function buildRail() {
   spy();
 }
 
-/** Highlights the turn under the reading line, a third of the way down the view. */
+/**
+ * Highlights the turn under the reading line, a third of the way down the view. At the bottom
+ * the line moves to the lower edge, since the last turns may never reach a third of the way up.
+ */
 function spy() {
   if (!S.cur || !S.turns.length) return;
-  const y = scroller.scrollTop + scroller.clientHeight / 3;
-  let lo = 0;
-  let hi = S.turns.length - 1;
   let k = 0;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (S.cur.els[S.turns[mid].i].offsetTop <= y) {
-      k = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
+  if (S.held && S.held.top === scroller.scrollTop && S.held.k < S.turns.length) {
+    k = S.held.k;
+  } else {
+    S.held = null;
+    const y = scroller.scrollTop + (atBottom() ? scroller.clientHeight : scroller.clientHeight / 3);
+    let lo = 0;
+    let hi = S.turns.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (S.cur.els[S.turns[mid].i].offsetTop <= y) {
+        k = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
     }
   }
   if (k === S.on) return;
@@ -406,6 +448,9 @@ function jump(k) {
   if (!t) return;
   S.cur.els[t.i].scrollIntoView({ block: 'start' });
   S.follow = false;
+  // Near the end the view cannot scroll a turn up to the reading line, so mark it directly.
+  S.held = { k, top: scroller.scrollTop };
+  spy();
   history.replaceState(null, '', `#/${encodeURIComponent(S.cur.id)}/${t.i}`);
 }
 
@@ -423,12 +468,13 @@ function showCard(k, tick) {
 }
 
 function setChat(on) {
-  const i = topItem();
+  const i = S.follow ? null : topItem();
   const el = i != null && S.cur.els[i];
   const before = el ? el.getBoundingClientRect().top : 0;
   root.classList.toggle('chat', on);
   localStorage.setItem('ah.chat', on ? '1' : '0');
-  if (el && el.offsetParent) scroller.scrollTop += el.getBoundingClientRect().top - before;
+  if (S.follow) stick();
+  else if (el && el.offsetParent) scroller.scrollTop += el.getBoundingClientRect().top - before;
   S.on = -1;
   spy();
 }
@@ -478,7 +524,9 @@ function wire() {
   $('#bottom').addEventListener('click', stick);
 
   scroller.addEventListener('scroll', () => {
-    S.follow = atBottom();
+    // A scroll pin() made is not the reader's, even when content has grown below it since.
+    if (atBottom()) S.follow = true;
+    else if (scroller.scrollTop !== S.pinned) S.follow = false;
     if (S.follow) $('#bottom').hidden = true;
     requestAnimationFrame(spy);
   }, { passive: true });
@@ -513,7 +561,7 @@ function wire() {
 
   document.addEventListener('keydown', e => {
     if (e.target.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
-    const cur = S.turns[S.on];
+    const cur = S.cur && S.turns[S.on];
     const offset = cur ? S.cur.els[cur.i].getBoundingClientRect().top - scroller.getBoundingClientRect().top : 0;
     switch (e.key) {
       case 't': setChat(!root.classList.contains('chat')); break;
