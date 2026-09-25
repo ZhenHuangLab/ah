@@ -43,7 +43,7 @@
 <g font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
 <text font-size="52" font-weight="700" fill="#f4f4f5">
 <tspan x="84" y="364"><tspan fill="#2df9c0">a</tspan>gent <tspan fill="#2df9c0">h</tspan>istory,</tspan>
-<tspan x="84" y="426">anywhere.</tspan>
+<tspan x="84" y="426"><tspan fill="#2df9c0">a</tspan>nyw<tspan fill="#2df9c0">h</tspan>ere<tspan fill="#2df9c0">!</tspan></tspan>
 </text>
 <rect x="366" y="386" width="29" height="48" fill="#2df9c0"/>
 <text font-size="18" fill="#7c7c85">
@@ -57,42 +57,36 @@
 <g transform="translate(700 64)" filter="url(#shadow)">
 <g clip-path="url(#browser-clip)" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif">
 <rect width="640" height="600" fill="#1b1b1d"/>
-<rect width="640" height="40" fill="#28282c"/>
-<circle cx="20" cy="20" r="6" fill="#ff5f57"/>
-<circle cx="40" cy="20" r="6" fill="#febc2e"/>
-<circle cx="60" cy="20" r="6" fill="#28c840"/>
-<rect x="170" y="9" width="280" height="22" rx="11" fill="#1b1b1d"/>
-<text x="310" y="24.5" font-size="12" fill="#a1a1aa" text-anchor="middle">devbox:7447</text>
-<rect y="40" width="200" height="560" fill="#151517"/>
-<rect x="200" y="40" width="1" height="560" fill="#2f2f34"/>
-<use href="#mark" fill="#2df9c0" shape-rendering="crispEdges" transform="translate(16 55) scale(1.1)"/>
-<rect x="52" y="54" width="134" height="26" rx="6" fill="none" stroke="#2f2f34"/>
-<text x="62" y="71" font-size="11" fill="#7c7c85">Filter sessions</text>
-<text x="18" y="108" font-size="11" font-weight="600" fill="#7c7c85">Today</text>
-<rect x="8" y="116" width="184" height="50" rx="8" fill="#2c3140"/>
-<text x="18" y="136" font-size="12.5" fill="#e4e4e7">Importing statement.csv dro…</text>
-<circle cx="22" cy="152" r="3" fill="#3fb950"/>
-<text x="32" y="156" font-size="11" fill="#7c7c85">ledger · now</text>
-<text x="18" y="192" font-size="12.5" fill="#e4e4e7">What is the expected numbe…</text>
-<text x="18" y="210" font-size="11" fill="#7c7c85">notes · 2h</text>
-<text x="18" y="242" font-size="12.5" fill="#e4e4e7">/search got slow after yest…</text>
-<text x="18" y="260" font-size="11" fill="#7c7c85">api · 5h</text>
-<rect x="200" y="100" width="440" height="1" fill="#2f2f34"/>
-<text x="222" y="70" font-size="14" font-weight="600" fill="#e4e4e7">Importing statement.csv drops every row whose…</text>
-<circle cx="226" cy="85" r="3" fill="#3fb950"/>
-<text x="236" y="89" font-size="11" fill="#7c7c85">~/dev/ledger · claude-opus-5-5</text>
-<rect x="330" y="116" width="290" height="52" rx="14" fill="#2a2a2e"/>
+<rect width="200" height="600" fill="#151517"/>
+<rect x="200" width="1" height="600" fill="#2f2f34"/>
+<use href="#mark" fill="#2df9c0" shape-rendering="crispEdges" transform="translate(16 15) scale(1.1)"/>
+<rect x="52" y="14" width="134" height="26" rx="6" fill="none" stroke="#2f2f34"/>
+<text x="62" y="31" font-size="11" fill="#7c7c85">Filter sessions</text>
+<text x="18" y="68" font-size="11" font-weight="600" fill="#7c7c85">Today</text>
+<rect x="8" y="76" width="184" height="50" rx="8" fill="#2c3140"/>
+<text x="18" y="96" font-size="12.5" fill="#e4e4e7">Importing statement.csv dro…</text>
+<circle cx="22" cy="112" r="3" fill="#3fb950"/>
+<text x="32" y="116" font-size="11" fill="#7c7c85">ledger · now</text>
+<text x="18" y="152" font-size="12.5" fill="#e4e4e7">What is the expected numbe…</text>
+<text x="18" y="170" font-size="11" fill="#7c7c85">notes · 2h</text>
+<text x="18" y="202" font-size="12.5" fill="#e4e4e7">/search got slow after yest…</text>
+<text x="18" y="220" font-size="11" fill="#7c7c85">api · 5h</text>
+<rect x="200" y="60" width="440" height="1" fill="#2f2f34"/>
+<text x="222" y="30" font-size="14" font-weight="600" fill="#e4e4e7">Importing statement.csv drops every row whose…</text>
+<circle cx="226" cy="45" r="3" fill="#3fb950"/>
+<text x="236" y="49" font-size="11" fill="#7c7c85">~/dev/ledger · claude-opus-5-5</text>
+<rect x="330" y="76" width="290" height="52" rx="14" fill="#2a2a2e"/>
 <text font-size="12.5" fill="#e4e4e7">
-<tspan x="346" y="138">Does it also handle files exported from</tspan>
-<tspan x="346" y="156">Excel on Windows?</tspan>
+<tspan x="346" y="98">Does it also handle files exported from</tspan>
+<tspan x="346" y="116">Excel on Windows?</tspan>
 </text>
-<text x="222" y="198" font-size="14" fill="#e4e4e7">I'll check both with a copy of an Excel export.</text>
-<text x="222" y="226" font-size="12.5" fill="#a1a1aa">⌄  Ran 1 command, edited 2 files, 1 failed</text>
-<rect x="228" y="236" width="1.5" height="72" fill="#2f2f34"/>
+<text x="222" y="158" font-size="14" fill="#e4e4e7">I'll check both with a copy of an Excel export.</text>
+<text x="222" y="186" font-size="12.5" fill="#a1a1aa">⌄  Ran 1 command, edited 2 files, 1 failed</text>
+<rect x="228" y="196" width="1.5" height="72" fill="#2f2f34"/>
 <g font-size="12">
-<text x="242" y="254"><tspan fill="#7c7c85">›  </tspan><tspan font-weight="600" fill="#e4e4e7">Write</tspan><tspan font-family="'JetBrains Mono', monospace" fill="#a1a1aa">  tests/fixtures/excel.csv</tspan></text>
-<text x="242" y="278"><tspan fill="#7c7c85">›  </tspan><tspan font-weight="600" fill="#e4e4e7">Edit</tspan><tspan font-family="'JetBrains Mono', monospace" fill="#a1a1aa">  tests/import.rs</tspan></text>
-<text x="242" y="302"><tspan fill="#7c7c85">›  </tspan><tspan font-weight="600" fill="#f85149">Bash</tspan><tspan font-family="'JetBrains Mono', monospace" fill="#a1a1aa">  cargo test excel_export</tspan></text>
+<text x="242" y="214"><tspan fill="#7c7c85">›  </tspan><tspan font-weight="600" fill="#e4e4e7">Write</tspan><tspan font-family="'JetBrains Mono', monospace" fill="#a1a1aa">  tests/fixtures/excel.csv</tspan></text>
+<text x="242" y="238"><tspan fill="#7c7c85">›  </tspan><tspan font-weight="600" fill="#e4e4e7">Edit</tspan><tspan font-family="'JetBrains Mono', monospace" fill="#a1a1aa">  tests/import.rs</tspan></text>
+<text x="242" y="262"><tspan fill="#7c7c85">›  </tspan><tspan font-weight="600" fill="#f85149">Bash</tspan><tspan font-family="'JetBrains Mono', monospace" fill="#a1a1aa">  cargo test excel_export</tspan></text>
 </g>
 </g>
 <rect x="0.5" y="0.5" width="639" height="599" rx="12" fill="none" stroke="#34343a"/>

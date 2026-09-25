@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/social-preview.png" alt="ah: agent history, anywhere. The session list in a terminal in front of a session in a browser">
+  <img src="docs/social-preview.png" alt="ah: agent history, anywhere! The session list in a terminal in front of a session in a browser">
 </p>
 
 <h1 align="center">ah</h1>
