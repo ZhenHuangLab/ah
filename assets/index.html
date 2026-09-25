@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ah</title>
+<link rel="icon" href="data:,">
+<script>
+  (function () {
+    var t = localStorage.getItem('ah.theme');
+    if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+    if (localStorage.getItem('ah.chat') === '1') document.documentElement.classList.add('chat');
+  })();
+</script>
+<link rel="stylesheet" href="assets/vendor/katex/katex.min.css">
+<link rel="stylesheet" href="assets/app.css">
+<script defer src="assets/vendor/katex/katex.min.js"></script>
+<script defer src="assets/vendor/hljs/highlight.min.js"></script>
+<script defer src="assets/app.js"></script>
+</head>
+<body>
+<aside id="side">
+  <div class="side-head">
+    <input id="filter" type="search" placeholder="Filter sessions" autocomplete="off" spellcheck="false">
+  </div>
+  <div id="agents">
+    <button data-agent="" class="on">All</button><button data-agent="claude">Claude</button><button data-agent="codex">Codex</button><button data-agent="pi">pi</button>
+  </div>
+  <nav id="list"></nav>
+</aside>
+<main id="main">
+  <header id="top">
+    <button id="menu" class="icon" title="Sessions">☰</button>
+    <div class="heading">
+      <h1 id="title">ah</h1>
+      <div id="sub"></div>
+    </div>
+    <button id="mode" title="Hide tool calls and show only the conversation (t)">Chat only</button>
+    <button id="theme" class="icon" title="Switch theme">◐</button>
+  </header>
+  <div id="scroll">
+    <div id="conv"></div>
+    <div id="empty">Pick a session on the left.</div>
+  </div>
+  <nav id="rail"><div id="ticks"></div></nav>
+  <div id="card" hidden><div class="card-t"></div><div class="card-b"></div><div class="card-w"></div></div>
+  <button id="bottom" class="icon" title="Jump to the latest message" hidden>↓</button>
+</main>
+</body>
+</html>
