@@ -102,7 +102,7 @@ are shown in file order. When a pi session goes back to an earlier point with
 `/tree`, the abandoned branch stays visible and a notice marks where the
 conversation resumes.
 
-## License notes
+## License
 
-`assets/vendor` contains KaTeX (MIT) and highlight.js (BSD-3-Clause) with their
-license files.
+MIT; see [LICENSE](LICENSE). `assets/vendor` contains KaTeX (MIT) and
+highlight.js (BSD-3-Clause) with their license files.

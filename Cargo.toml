@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Browse Claude Code, Codex and pi session history in the terminal or a browser"
 repository = "https://github.com/ZhenHuangLab/ah"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.104"
