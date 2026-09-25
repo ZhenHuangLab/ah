@@ -18,6 +18,8 @@
   <img src="https://img.shields.io/badge/works_with-Claude_Code_%C2%B7_Codex_%C2%B7_pi-2DF9C0" alt="Works with Claude Code, Codex and pi">
 </p>
 
+<p align="center"><b>English</b> · <a href="README.zh-CN.md">简体中文</a></p>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/all-dark.png">
   <img src="docs/all-light.png" alt="The browser view: sessions by date on the left, and a Claude Code session with one group of tool calls opened">
@@ -171,3 +173,7 @@ conversation resumes.
 MIT; see [LICENSE](LICENSE). `assets/vendor` contains KaTeX (MIT) and
 highlight.js (BSD-3-Clause) with their license files. The screenshots show
 invented sessions.
+
+## Acknowledgments
+
+Thanks to the <a href="https://linux.do/"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/linuxdo-dark.png"><img src="docs/linuxdo-light.png" alt="LINUX DO" height="28" align="absmiddle"></picture></a> community for its support and feedback.
