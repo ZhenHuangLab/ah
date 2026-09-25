@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
-    <img src="docs/logo-light.svg" width="120" alt="">
-  </picture>
+  <img src="docs/social-preview.png" alt="ah：agent history, anywhere。终端里的会话列表，后面是浏览器里的一个会话">
 </p>
 
 <h1 align="center">ah</h1>
