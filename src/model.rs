@@ -202,6 +202,8 @@ pub struct Transcript {
     early: HashMap<String, Output>,
     /// Calls added without a result, for `end_turn`.
     pending: Vec<(usize, usize)>,
+    /// The item with the latest text of the current turn.
+    answer: Option<usize>,
 }
 
 impl Transcript {
@@ -209,6 +211,7 @@ impl Transcript {
         // A prompt starts a new turn: none of the agents runs a call past it.
         if role == Role::User {
             self.end_turn();
+            self.answer = None;
         }
         let idx = self.items.len();
         self.items.push(Item { role, time, blocks: Vec::new(), rev: self.rev });
@@ -243,8 +246,16 @@ impl Transcript {
             _ => {}
         }
         let item = &mut self.items[idx];
+        let answer = item.role == Role::Assistant && matches!(&block, Block::Text(s) if !s.trim().is_empty());
         item.blocks.push(block);
         item.rev = self.rev;
+        if answer {
+            // The turn's final answer is now here; the item that held it changes as well.
+            if let Some(j) = self.answer.filter(|&j| j != idx) {
+                self.items[j].rev = self.rev;
+            }
+            self.answer = Some(idx);
+        }
     }
 
     /// Appends a tool call to the trailing assistant item and remembers it for `attach`.
@@ -302,6 +313,33 @@ impl Transcript {
             Block::Notice(n) => Some(n),
             _ => None,
         })
+    }
+
+    /// For each item, the block with the final answer of its turn when the item holds it: the
+    /// last text the agent wrote before the next prompt. Earlier text in a turn is mostly notes
+    /// on progress between tool calls.
+    pub fn answers(&self) -> Vec<Option<usize>> {
+        let mut out = vec![None; self.items.len()];
+        let mut last = None;
+        for (i, it) in self.items.iter().enumerate() {
+            match it.role {
+                Role::User => {
+                    if let Some((j, b)) = last.take() {
+                        out[j] = Some(b);
+                    }
+                }
+                Role::Assistant => {
+                    if let Some(b) = it.blocks.iter().rposition(|b| matches!(b, Block::Text(s) if !s.trim().is_empty())) {
+                        last = Some((i, b));
+                    }
+                }
+                Role::Event => {}
+            }
+        }
+        if let Some((j, b)) = last {
+            out[j] = Some(b);
+        }
+        out
     }
 
     pub fn first_prompt(&self) -> Option<&str> {

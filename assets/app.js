@@ -4,17 +4,21 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 
 const LIVE_MS = 2 * 60 * 1000;
+const VIEWS = ['all', 'chat', 'answers'];
 const root = document.documentElement;
 const scroller = $('#scroll');
 const conv = $('#conv');
 const ticks = $('#ticks');
 const card = $('#card');
+const narrow = matchMedia('(max-width: 860px)');
 
 const S = {
   home: '',
   sessions: [],
   agent: localStorage.getItem('ah.agent') || '',
   filter: '',
+  // all: everything; chat: no tool calls, thinking or notices; answers: prompts and final answers.
+  view: VIEWS.includes(localStorage.getItem('ah.view')) ? localStorage.getItem('ah.view') : 'all',
   // The open session: {id, gen, rev, meta, items: [], els: []}.
   cur: null,
   es: null,
@@ -68,6 +72,20 @@ async function copyText(s) {
   ta.select();
   document.execCommand('copy');
   ta.remove();
+}
+
+let toastTimer = 0;
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 1400);
+}
+
+/** Markdown of an item's text; in the answers view, of the final answer it shows. */
+function itemMarkdown(it) {
+  return S.view === 'answers' && it.answer ? it.texts[it.texts.length - 1] : it.texts.join('\n\n');
 }
 
 // ---------- session list ----------
@@ -150,6 +168,22 @@ function listEvents() {
   };
 }
 
+/** Shows or hides the session list: a drawer on narrow screens, a column that stays hidden otherwise. */
+function toggleSide(show) {
+  if (narrow.matches) {
+    root.classList.toggle('side-open', show);
+    return;
+  }
+  const hide = show === undefined ? !root.classList.contains('side-closed') : !show;
+  root.classList.toggle('side-closed', hide);
+  localStorage.setItem('ah.side', hide ? '0' : '1');
+}
+
+function findSession() {
+  toggleSide(true);
+  $('#filter').focus();
+}
+
 // ---------- conversation ----------
 
 function renderHead() {
@@ -190,7 +224,7 @@ async function open(id, target) {
   renderHead();
   buildRail();
   for (const row of $$('#list .row')) row.classList.toggle('on', row.dataset.id === id);
-  document.body.classList.remove('side-open');
+  root.classList.remove('side-open');
   const el = target != null && S.cur.els[target];
   if (el) {
     el.scrollIntoView({ block: 'start' });
@@ -249,9 +283,11 @@ function put(it) {
     conv.insertBefore(el, next);
     c.els[it.i] = el;
   }
-  el.className = `item ${it.role}` + (it.kind ? ` k-${it.kind}` : '') + (it.role === 'assistant' && !it.md ? ' bare' : '');
+  const text = it.texts.length > 0;
+  el.className = `item ${it.role}` + (it.kind ? ` k-${it.kind}` : '') +
+    (it.role === 'assistant' && !text ? ' bare' : '') + (it.answer ? ' answer' : '');
   let acts = '';
-  if (it.md) {
+  if (text) {
     const t = it.role === 'user' && it.time ? `<span>${esc(when(it.time))}</span>` : '';
     acts = `<div class="acts">${t}<button class="copy">Copy</button></div>`;
   }
@@ -274,10 +310,11 @@ const seen = new IntersectionObserver(entries => {
 function enhance(el) {
   if (window.katex) {
     for (const m of $$('.math', el)) {
-      if (m.dataset.done) continue;
-      m.dataset.done = '1';
+      if (m.dataset.tex != null) continue;
+      // The TeX stays on the element for copying.
+      m.dataset.tex = m.textContent;
       try {
-        katex.render(m.textContent, m, { displayMode: m.classList.contains('math-display'), throwOnError: false });
+        katex.render(m.dataset.tex, m, { displayMode: m.classList.contains('math-display'), throwOnError: false });
       } catch (_) { /* leave the source visible */ }
     }
   }
@@ -354,6 +391,18 @@ async function loadBody(d) {
   }
 }
 
+/** Opens every group of tool calls and thinking, or closes all folds when some are open. */
+function toggleAll() {
+  if (!S.cur) return;
+  const open = $$('details[open]', conv);
+  if (open.length) {
+    for (const d of open) d.open = false;
+    return;
+  }
+  if (S.view !== 'all') setView('all');
+  for (const d of $$('.item > details.tools, .item > details.thinking', conv)) d.open = true;
+}
+
 // ---------- position, follow and the turn rail ----------
 
 function atBottom() {
@@ -386,15 +435,36 @@ function topItem() {
   return null;
 }
 
+/** The shown item at the reading line, a third of the way down the view. */
+function readingItem() {
+  if (!S.cur) return null;
+  const y = scroller.scrollTop + scroller.clientHeight / 3;
+  let found = null;
+  for (const el of S.cur.els) {
+    if (!el || !el.offsetParent) continue;
+    if (el.offsetTop > y) break;
+    found = el;
+  }
+  return found && S.cur.items[+found.dataset.i];
+}
+
+function copyCurrent() {
+  const it = readingItem();
+  const md = it && itemMarkdown(it);
+  if (!md) return toast('Nothing to copy here');
+  copyText(md).then(() => toast('Copied as Markdown'));
+}
+
 function buildRail() {
   const c = S.cur;
   const turns = [];
+  const size = it => it.texts.reduce((n, s) => n + s.length, 0);
   for (const it of c.items) {
     if (!it) continue;
-    if (it.role === 'user') turns.push({ i: it.i, size: it.md.length, answer: '', time: it.time });
+    if (it.role === 'user') turns.push({ i: it.i, size: size(it), answer: '', time: it.time });
     else if (turns.length) {
       const t = turns[turns.length - 1];
-      t.size += it.md.length;
+      t.size += size(it);
       if (it.role === 'assistant' && it.preview) t.answer = it.preview;
     }
   }
@@ -454,6 +524,13 @@ function jump(k) {
   history.replaceState(null, '', `#/${encodeURIComponent(S.cur.id)}/${t.i}`);
 }
 
+function prevTurn() {
+  const cur = S.cur && S.turns[S.on];
+  // Inside a long turn, go back to its start first.
+  const offset = cur ? S.cur.els[cur.i].getBoundingClientRect().top - scroller.getBoundingClientRect().top : 0;
+  jump(offset < -20 ? S.on : Math.max(S.on - 1, 0));
+}
+
 function showCard(k, tick) {
   const t = S.turns[k];
   if (!t) return;
@@ -467,16 +544,226 @@ function showCard(k, tick) {
   card.style.top = Math.max(8, Math.min(top, box.height - card.offsetHeight - 8)) + 'px';
 }
 
-function setChat(on) {
-  const i = S.follow ? null : topItem();
-  const el = i != null && S.cur.els[i];
-  const before = el ? el.getBoundingClientRect().top : 0;
-  root.classList.toggle('chat', on);
-  localStorage.setItem('ah.chat', on ? '1' : '0');
-  if (S.follow) stick();
-  else if (el && el.offsetParent) scroller.scrollTop += el.getBoundingClientRect().top - before;
+function setView(v) {
+  // Keep the reader's place: the top item if it stays shown, else the prompt of its turn.
+  const c = S.cur;
+  const anchors = [];
+  if (c && !S.follow) {
+    const i = topItem();
+    if (i != null) anchors.push(c.els[i]);
+    if (S.turns[S.on]) anchors.push(c.els[S.turns[S.on].i]);
+  }
+  const before = anchors.map(el => el.getBoundingClientRect().top);
+  S.view = v;
+  localStorage.setItem('ah.view', v);
+  root.classList.toggle('chat', v !== 'all');
+  root.classList.toggle('answers', v === 'answers');
+  for (const b of $$('#views button')) b.classList.toggle('on', b.dataset.view === v);
+  if (S.follow) {
+    stick();
+  } else {
+    const k = anchors.findIndex(el => el.offsetParent);
+    if (k >= 0) scroller.scrollTop += anchors[k].getBoundingClientRect().top - before[k];
+  }
   S.on = -1;
   spy();
+}
+
+function switchTheme() {
+  const t = root.dataset.theme === 'dark' ? 'light' : 'dark';
+  root.dataset.theme = t;
+  localStorage.setItem('ah.theme', t);
+}
+
+// ---------- commands ----------
+
+/** Every command, listed in the command list; `keys` also run them from the keyboard. */
+const COMMANDS = [
+  { label: 'Show everything', keys: [], on: () => S.view === 'all', run: () => setView('all') },
+  { label: 'Chat only: hide tool calls, thinking and notices', keys: ['t'], on: () => S.view === 'chat', run: () => setView(S.view === 'chat' ? 'all' : 'chat') },
+  { label: 'Answers only: prompts and final answers', keys: ['a'], on: () => S.view === 'answers', run: () => setView(S.view === 'answers' ? 'all' : 'answers') },
+  { label: 'Next turn', keys: ['j', ']'], run: () => jump(Math.min(S.on + 1, S.turns.length - 1)) },
+  { label: 'Previous turn', keys: ['k', '['], run: prevTurn },
+  { label: 'First message', keys: ['g'], run: () => { scroller.scrollTop = 0; } },
+  { label: 'Latest message, following new ones', keys: ['G'], run: stick },
+  { label: 'Expand or collapse all tool calls', keys: ['e'], run: toggleAll },
+  { label: 'Copy the message at the reading line', keys: ['y'], run: copyCurrent },
+  { label: 'Show or hide the sessions', keys: ['s'], run: () => toggleSide() },
+  { label: 'Find a session', keys: ['/'], run: findSession },
+  { label: 'Switch between light and dark', keys: [], run: switchTheme },
+];
+
+const pal = { el: $('#palette'), q: $('#pal-q'), list: $('#pal-list'), shown: [], sel: 0 };
+
+function openPalette() {
+  pal.q.value = '';
+  pal.sel = 0;
+  pal.el.hidden = false;
+  renderPalette();
+  pal.q.focus();
+}
+
+function closePalette() {
+  pal.el.hidden = true;
+}
+
+function renderPalette() {
+  const words = pal.q.value.toLowerCase().split(/\s+/).filter(Boolean);
+  pal.shown = COMMANDS.filter(c => words.every(w => `${c.label} ${c.keys.join(' ')}`.toLowerCase().includes(w)));
+  pal.sel = Math.max(0, Math.min(pal.sel, pal.shown.length - 1));
+  pal.list.innerHTML = pal.shown.map((c, k) =>
+    `<div class="cmd${k === pal.sel ? ' sel' : ''}" data-k="${k}" role="option">` +
+    `<span>${esc(c.label)}${c.on && c.on() ? '<span class="check">✓</span>' : ''}</span>` +
+    `<span class="keys">${c.keys.map(x => `<kbd>${esc(x)}</kbd>`).join('')}</span></div>`).join('') ||
+    '<div class="none">No matching command</div>';
+  const sel = pal.list.children[pal.sel];
+  if (sel) sel.scrollIntoView({ block: 'nearest' });
+}
+
+function runCommand(c) {
+  closePalette();
+  if (c) c.run();
+}
+
+// ---------- copying a selection as Markdown ----------
+
+// Stand for a paragraph break and a line break until the converted pieces are joined; each
+// absorbs the whitespace around it.
+const BREAK = '\u0001';
+const LINE = '\u0002';
+
+// Parts of the conversation that are interface rather than transcript.
+const CHROME = 'button, .acts, summary, .notice, img.att, .cut';
+
+/** Joins converted pieces: each run of paragraph breaks becomes one blank line. */
+function paragraphs(s) {
+  return s.replace(/\s*\u0001[\s\u0001]*/g, '\n\n').replace(/\s*\u0002\s*/g, '\n').replace(/^\n+|\n+$/g, '');
+}
+
+/** Whether `range` takes in all of the contents of `el`. */
+function covers(range, el) {
+  const r = document.createRange();
+  r.selectNodeContents(el);
+  return range.compareBoundaryPoints(Range.START_TO_START, r) <= 0 && range.compareBoundaryPoints(Range.END_TO_END, r) >= 0;
+}
+
+/** Wraps `s` in an emphasis mark, keeping surrounding spaces outside it. */
+function around(mark, s) {
+  const m = s.match(/^(\s*)([\s\S]*?)(\s*)$/);
+  return m[2] ? m[1] + mark + m[2] + mark + m[3] : s;
+}
+
+function codeSpan(s) {
+  const tick = '`'.repeat(Math.max(0, ...(s.match(/`+/g) || []).map(r => r.length)) + 1);
+  const pad = s.startsWith('`') || s.endsWith('`') ? ' ' : '';
+  return tick + pad + s + pad + tick;
+}
+
+/**
+ * Markdown for the part of `from` inside `range`. A message the range takes in whole is copied
+ * from its source; a part of one is converted back, with formulas as TeX, code blocks as fences,
+ * and emphasis, links, lists, quotes and tables in Markdown syntax. What the current view
+ * hides, closed folds and buttons are left out.
+ */
+function rangeMarkdown(range, from) {
+  const clip = t => {
+    let s = t.data;
+    if (t === range.endContainer) s = s.slice(0, range.endOffset);
+    if (t === range.startContainer) s = s.slice(range.startOffset);
+    return s;
+  };
+  // With `whole`, the node is converted in full even where the selection does not reach.
+  const kids = (el, whole) => Array.from(el.childNodes, n => md(n, whole)).join('');
+  const fence = (pre, whole) => {
+    const code = $(':scope > code', pre);
+    const body = kids(code || pre, whole).replace(/\n$/, '');
+    // A raw HTML block is shown as it was written.
+    if (!code) return body;
+    const lang = (code.className.match(/language-([\w+#.-]+)/) || [])[1] || '';
+    const f = '`'.repeat(Math.max(2, ...(body.match(/`+/g) || []).map(r => r.length)) + 1);
+    return `${f}${lang}\n${body}\n${f}`;
+  };
+  const list = (el, whole) => {
+    const ordered = el.tagName === 'OL';
+    let n = ordered ? +(el.getAttribute('start') || 1) : 1;
+    const out = [];
+    for (const li of el.children) {
+      const num = n++;
+      if (li.tagName !== 'LI' || (!whole && !range.intersectsNode(li))) continue;
+      const mark = ordered ? `${num}. ` : '- ';
+      const lines = paragraphs(kids(li, whole)).split('\n');
+      out.push(mark + lines.map((l, k) => (k && l ? ' '.repeat(mark.length) + l : l)).join('\n'));
+    }
+    return out.join('\n');
+  };
+  const table = (t, whole) => {
+    // Rows are copied whole, with the header, so the result is still a table.
+    const cell = c => paragraphs(kids(c, true)).replace(/\s*\n\s*/g, ' ').replace(/\|/g, '\\|');
+    const head = t.tHead && t.tHead.rows[0];
+    const body = Array.from(t.rows).filter(r => r !== head && (whole || range.intersectsNode(r)));
+    const first = head || body.shift();
+    if (!first) return '';
+    const row = r => `| ${Array.from(r.cells, cell).join(' | ')} |`;
+    const rule = Array.from(first.cells, c => ({ left: ':---', center: ':---:', right: '---:' })[c.style.textAlign] || '---');
+    return [row(first), `| ${rule.join(' | ')} |`, ...body.map(row)].join('\n');
+  };
+  const md = (n, whole) => {
+    if (!whole && !range.intersectsNode(n)) return '';
+    if (n.nodeType === Node.TEXT_NODE) return whole ? n.data : clip(n);
+    if (n.nodeType !== Node.ELEMENT_NODE) return '';
+    if (n.tagName === 'BR') return '\n';
+    if (n.matches(CHROME) || !n.getClientRects().length) return '';
+    const item = n.parentElement && n.parentElement.classList.contains('item') && S.cur.items[+n.parentElement.dataset.i];
+    if (item && !whole && n.classList.contains('md') && covers(range, n)) {
+      return BREAK + item.texts[$$(':scope > .md', n.parentElement).indexOf(n)] + BREAK;
+    }
+    if (n.classList.contains('math')) {
+      const tex = (n.dataset.tex ?? n.textContent).trim();
+      return n.classList.contains('math-display') ? `${BREAK}$$\n${tex}\n$$${BREAK}` : `$${tex}$`;
+    }
+    const inner = () => kids(n, whole);
+    switch (n.tagName) {
+      case 'P': case 'DIV': case 'ARTICLE': case 'DETAILS': return BREAK + inner() + BREAK;
+      case 'H1': case 'H2': case 'H3': case 'H4': case 'H5': case 'H6':
+        return BREAK + '#'.repeat(+n.tagName[1]) + ' ' + inner().trim() + BREAK;
+      case 'STRONG': case 'B': return around('**', inner());
+      case 'EM': case 'I': return around('*', inner());
+      case 'DEL': case 'S': return around('~~', inner());
+      case 'CODE': return codeSpan(inner());
+      case 'PRE': return BREAK + fence(n, whole) + BREAK;
+      case 'A': {
+        const href = n.getAttribute('href');
+        return href && href !== '#' ? `[${inner()}](${href})` : inner();
+      }
+      case 'IMG': return `![${n.alt}](${n.getAttribute('src') || ''})`;
+      case 'INPUT': return n.type === 'checkbox' ? (n.checked ? '[x] ' : '[ ] ') : '';
+      case 'BLOCKQUOTE': return BREAK + paragraphs(inner()).replace(/^/gm, '> ').replace(/^> $/gm, '>') + BREAK;
+      // A list inside a list item follows its text on the next line.
+      case 'UL': case 'OL': return (n.parentElement.tagName === 'LI' ? LINE : BREAK) + list(n, whole) + BREAK;
+      case 'TABLE': return BREAK + table(n, whole) + BREAK;
+      case 'HR': return BREAK + '---' + BREAK;
+      case 'SUP': case 'SUB': case 'KBD': case 'U': {
+        const tag = n.tagName.toLowerCase();
+        return `<${tag}>${inner()}</${tag}>`;
+      }
+      default: return inner();
+    }
+  };
+  return paragraphs(md(from, false));
+}
+
+/** Markdown for the selection in the conversation, or null to leave copying to the browser. */
+function selectionMarkdown() {
+  const sel = getSelection();
+  if (!sel.rangeCount || sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  let el = range.commonAncestorContainer;
+  if (el.nodeType !== Node.ELEMENT_NODE) el = el.parentElement;
+  // Inside a single code block, its text is what to copy.
+  if (!el || !conv.contains(el) || el.closest('pre')) return null;
+  // Start at the enclosing block, so emphasis, links and formulas around the selection count.
+  const from = el.closest('p, li, h1, h2, h3, h4, h5, h6, th, td, .md, .prompt, .item') || conv;
+  return rangeMarkdown(range, from) || null;
 }
 
 // ---------- wiring ----------
@@ -484,7 +771,7 @@ function setChat(on) {
 function route() {
   const m = location.hash.match(/^#\/([^/]+)(?:\/(\d+))?/);
   if (!m) {
-    if (window.innerWidth <= 860) document.body.classList.add('side-open');
+    if (narrow.matches) root.classList.add('side-open');
     return;
   }
   const id = decodeURIComponent(m[1]);
@@ -497,8 +784,35 @@ function route() {
   open(id, target);
 }
 
+/** Dragging the edge of the session list sets its width; a double click resets it. */
+function wireGrip() {
+  const grip = $('#grip');
+  grip.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    root.classList.add('resizing');
+    let w = 0;
+    const move = ev => {
+      w = Math.round(Math.max(220, Math.min(ev.clientX, 640, innerWidth * 0.6)));
+      root.style.setProperty('--side-w', w + 'px');
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('lostpointercapture', () => {
+      grip.removeEventListener('pointermove', move);
+      root.classList.remove('resizing');
+      if (w) localStorage.setItem('ah.sideW', w);
+    }, { once: true });
+  });
+  grip.addEventListener('dblclick', () => {
+    root.style.removeProperty('--side-w');
+    localStorage.removeItem('ah.sideW');
+  });
+}
+
 function wire() {
   for (const b of $$('#agents button')) b.classList.toggle('on', b.dataset.agent === S.agent);
+  for (const b of $$('#views button')) b.classList.toggle('on', b.dataset.view === S.view);
   $('#agents').addEventListener('click', e => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -511,17 +825,18 @@ function wire() {
     S.filter = e.target.value;
     renderList();
   });
-  $('#menu').addEventListener('click', () => document.body.classList.toggle('side-open'));
+  $('#menu').addEventListener('click', () => toggleSide());
   $('#main').addEventListener('click', e => {
-    if (!e.target.closest('#menu')) document.body.classList.remove('side-open');
+    if (!e.target.closest('#menu')) root.classList.remove('side-open');
   });
-  $('#mode').addEventListener('click', () => setChat(!root.classList.contains('chat')));
-  $('#theme').addEventListener('click', () => {
-    const t = root.dataset.theme === 'dark' ? 'light' : 'dark';
-    root.dataset.theme = t;
-    localStorage.setItem('ah.theme', t);
+  $('#views').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (b) setView(b.dataset.view);
   });
+  $('#cmds').addEventListener('click', openPalette);
+  $('#theme').addEventListener('click', switchTheme);
   $('#bottom').addEventListener('click', stick);
+  wireGrip();
 
   scroller.addEventListener('scroll', () => {
     // A scroll pin() made is not the reader's, even when content has grown below it since.
@@ -547,10 +862,17 @@ function wire() {
     const b = e.target.closest('.copy');
     if (!b) return;
     const it = S.cur.items[+b.closest('.item').dataset.i];
-    copyText(it.md).then(() => {
+    copyText(itemMarkdown(it)).then(() => {
       b.textContent = 'Copied';
       setTimeout(() => { b.textContent = 'Copy'; }, 1200);
     });
+  });
+
+  document.addEventListener('copy', e => {
+    const md = selectionMarkdown();
+    if (md == null) return;
+    e.clipboardData.setData('text/plain', md);
+    e.preventDefault();
   });
 
   // `toggle` does not bubble; listen in the capture phase.
@@ -559,23 +881,54 @@ function wire() {
     if (d.dataset && d.dataset.src && d.open && !d.dataset.loaded) loadBody(d);
   }, true);
 
-  document.addEventListener('keydown', e => {
-    if (e.target.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
-    const cur = S.cur && S.turns[S.on];
-    const offset = cur ? S.cur.els[cur.i].getBoundingClientRect().top - scroller.getBoundingClientRect().top : 0;
-    switch (e.key) {
-      case 't': setChat(!root.classList.contains('chat')); break;
-      case 'j': case ']': jump(Math.min(S.on + 1, S.turns.length - 1)); break;
-      case 'k': case '[': jump(offset < -20 ? S.on : Math.max(S.on - 1, 0)); break;
-      case 'g': scroller.scrollTop = 0; break;
-      case 'G': stick(); break;
-      case '/':
-        document.body.classList.add('side-open');
-        $('#filter').focus();
-        break;
-      default: return;
+  pal.q.addEventListener('input', () => {
+    pal.sel = 0;
+    renderPalette();
+  });
+  pal.q.addEventListener('keydown', e => {
+    const n = pal.shown.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (n) pal.sel = (pal.sel + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+      renderPalette();
+    } else if (e.key === 'Enter') {
+      runCommand(pal.shown[pal.sel]);
+    } else if (e.key === 'Escape') {
+      closePalette();
+    } else {
+      return;
     }
     e.preventDefault();
+  });
+  pal.list.addEventListener('click', e => {
+    const d = e.target.closest('.cmd');
+    if (d) runCommand(pal.shown[+d.dataset.k]);
+  });
+  pal.list.addEventListener('mousemove', e => {
+    const d = e.target.closest('.cmd');
+    if (!d || +d.dataset.k === pal.sel) return;
+    pal.sel = +d.dataset.k;
+    for (const x of pal.list.children) x.classList.toggle('sel', x === d);
+  });
+  pal.el.addEventListener('mousedown', e => {
+    if (e.target === pal.el) closePalette();
+  });
+
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      if (pal.el.hidden) openPalette();
+      else closePalette();
+      return;
+    }
+    if (e.target.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'Escape') {
+      root.classList.remove('side-open');
+      return;
+    }
+    const c = e.key === '?' ? { run: openPalette } : COMMANDS.find(c => c.keys.includes(e.key));
+    if (!c) return;
+    e.preventDefault();
+    c.run();
   });
 
   window.addEventListener('hashchange', route);

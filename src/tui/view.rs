@@ -13,7 +13,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use unicode_width::UnicodeWidthChar;
 
-use super::doc::{self, Fold, Opts};
+use super::doc::{self, Fold, Opts, View};
 use super::text::{Row, truncate, width};
 use super::theme;
 use crate::live::Live;
@@ -26,12 +26,12 @@ pub enum Action {
     Quit,
 }
 
-#[derive(Default)]
+/// An item's rows and what they were laid out for.
 struct Cached {
-    valid: bool,
     rev: u64,
     width: usize,
-    chat: bool,
+    view: View,
+    answer: Option<usize>,
     ver: u64,
     rows: Vec<Row>,
 }
@@ -54,7 +54,7 @@ pub struct Viewer {
     pub live: Live,
     /// The transcript generation the layout below belongs to.
     generation: u64,
-    cache: Vec<Cached>,
+    cache: Vec<Option<Cached>>,
     /// Bumped when a fold inside the item changes.
     ver: Vec<u64>,
     /// First row of each item, plus the total at the end.
@@ -63,7 +63,7 @@ pub struct Viewer {
     height: usize,
     top: usize,
     follow: bool,
-    chat: bool,
+    view: View,
     open: HashSet<Fold>,
     focus: Option<Fold>,
     sel: Option<Sel>,
@@ -86,7 +86,7 @@ impl Viewer {
             height: 0,
             top: 0,
             follow: true,
-            chat: false,
+            view: View::All,
             open: HashSet::new(),
             focus: None,
             sel: None,
@@ -125,7 +125,7 @@ impl Viewer {
             return None;
         }
         let i = self.item_at(n);
-        self.cache.get(i)?.rows.get(n - self.starts[i])
+        self.cache.get(i)?.as_ref()?.rows.get(n - self.starts[i])
     }
 
     /// Lays out items that changed, keeping the top row's item in place.
@@ -141,31 +141,29 @@ impl Viewer {
             self.sel = None;
         }
         let items = &self.live.t.items;
+        let answers = self.live.t.answers();
         let anchor = (!self.cache.is_empty()).then(|| {
             let i = self.item_at(self.top);
             (i, self.top - self.starts[i])
         });
-        self.cache.resize_with(items.len(), Cached::default);
+        self.cache.resize_with(items.len(), || None);
         self.ver.resize(items.len(), 0);
-        let opts = Opts { width: self.width, chat: self.chat, open: &self.open };
+        let opts = Opts { width: self.width, view: self.view, open: &self.open };
         let mut changed = false;
         let mut starts = Vec::with_capacity(items.len() + 1);
         let mut total = 0;
         for (i, it) in items.iter().enumerate() {
-            let c = &mut self.cache[i];
-            if !c.valid || c.rev != it.rev || c.width != opts.width || c.chat != opts.chat || c.ver != self.ver[i] {
-                *c = Cached {
-                    valid: true,
-                    rev: it.rev,
-                    width: opts.width,
-                    chat: opts.chat,
-                    ver: self.ver[i],
-                    rows: doc::layout(i, it, &opts),
-                };
+            let (ver, answer) = (self.ver[i], answers[i]);
+            let fresh = self.cache[i]
+                .as_ref()
+                .is_some_and(|c| c.rev == it.rev && c.width == opts.width && c.view == opts.view && c.answer == answer && c.ver == ver);
+            if !fresh {
+                let rows = doc::layout(i, it, answer, &opts);
+                self.cache[i] = Some(Cached { rev: it.rev, width: opts.width, view: opts.view, answer, ver, rows });
                 changed = true;
             }
             starts.push(total);
-            total += c.rows.len();
+            total += self.cache[i].as_ref().map_or(0, |c| c.rows.len());
         }
         starts.push(total);
         self.starts = starts;
@@ -198,7 +196,7 @@ impl Viewer {
 
     fn fold_row(&self, fold: Fold) -> Option<usize> {
         let i = fold.item();
-        let c = self.cache.get(i)?;
+        let c = self.cache.get(i)?.as_ref()?;
         c.rows.iter().position(|r| r.fold == Some(fold)).map(|k| self.starts[i] + k)
     }
 
@@ -269,11 +267,8 @@ impl Viewer {
             KeyCode::BackTab => self.step_focus(false),
             KeyCode::Enter => self.toggle_focus(),
             KeyCode::Char('e') => self.toggle_all(),
-            KeyCode::Char('t') => {
-                self.chat = !self.chat;
-                self.focus = None;
-                self.say(if self.chat { "chat only: tool calls hidden" } else { "showing tool calls" });
-            }
+            KeyCode::Char('t') => self.set_view(if self.view == View::Chat { View::All } else { View::Chat }),
+            KeyCode::Char('a') => self.set_view(if self.view == View::Answers { View::All } else { View::Answers }),
             KeyCode::Char('/') => self.typing = Some(String::new()),
             KeyCode::Char('n') => self.step_hit(true),
             KeyCode::Char('N') => self.step_hit(false),
@@ -318,6 +313,16 @@ impl Viewer {
             }
             _ => {}
         }
+    }
+
+    fn set_view(&mut self, view: View) {
+        self.view = view;
+        self.focus = None;
+        self.say(match view {
+            View::All => "showing everything",
+            View::Chat => "chat only: tool calls hidden",
+            View::Answers => "answers only: prompts and final answers",
+        });
     }
 
     /// Jumps to the next or previous prompt.
@@ -468,17 +473,27 @@ impl Viewer {
     }
 
     fn copy_item(&mut self) {
+        let items = &self.live.t.items;
         let text = match self.focus {
-            Some(Fold::Tool(i, b)) => match self.live.t.items.get(i).and_then(|it| it.blocks.get(b)) {
+            Some(Fold::Tool(i, b)) => match items.get(i).and_then(|it| it.blocks.get(b)) {
                 Some(Block::Tool(t)) => {
                     tools::sections(t).iter().map(|s| format!("{}\n{}", s.title, s.body)).collect::<Vec<_>>().join("\n\n")
                 }
                 _ => String::new(),
             },
-            _ => match self.live.t.items.get(self.reading_item()) {
-                Some(it) => it.text(),
-                None => String::new(),
-            },
+            _ => {
+                let i = self.reading_item();
+                // The answers view shows only the final answer of an agent message.
+                let answer = if self.view == View::Answers { self.live.t.answers().get(i).copied().flatten() } else { None };
+                match (items.get(i), answer) {
+                    (Some(it), Some(b)) if it.role == Role::Assistant => match &it.blocks[b] {
+                        Block::Text(s) => s.trim().to_string(),
+                        _ => String::new(),
+                    },
+                    (Some(it), _) => it.text(),
+                    (None, _) => String::new(),
+                }
+            }
         };
         if text.is_empty() {
             self.say("nothing to copy here");
@@ -561,7 +576,12 @@ impl Viewer {
             None => "empty".to_string(),
         };
         let live = jiff::Timestamp::now().as_millisecond() - self.live.meta.modified < 120_000;
-        let mut right = format!(" {pos} · {}", if self.chat { "chat only" } else { "all" });
+        let view = match self.view {
+            View::All => "all",
+            View::Chat => "chat only",
+            View::Answers => "answers only",
+        };
+        let mut right = format!(" {pos} · {view}");
         if live {
             right.push_str(" · live");
         }
@@ -620,6 +640,7 @@ const HELP: &[(&str, &str)] = &[
     ("g G", "top, bottom (and follow)"),
     ("[ ]", "previous, next prompt"),
     ("t", "chat only: hide tool calls"),
+    ("a", "answers only: prompts, final answers"),
     ("tab shift-tab", "move between folds"),
     ("enter  click", "open or close a fold"),
     ("e", "expand or collapse all"),

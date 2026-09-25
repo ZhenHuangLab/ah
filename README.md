@@ -5,8 +5,10 @@ browser on another machine.
 
 `ah` finds every session of the three agents on this machine and shows the whole
 transcript, including everything before a context compaction. Tool calls and
-thinking fold into one summary line between messages, and a chat-only mode hides
-them entirely. Both views follow the transcript file, so a running session
+thinking fold into one summary line between messages. The chat view hides them
+entirely, and the answers view shows only your prompts and the last message of
+each turn, leaving out the notes agents write between tool calls. Both the
+terminal and the browser follow the transcript file, so a running session
 updates as the agent writes.
 
 ## Install
@@ -34,6 +36,7 @@ In the list, type to filter and press Enter to open. In a session:
 | `g` `G` | top, bottom (bottom keeps following new messages) |
 | `[` `]` | previous, next prompt |
 | `t` | chat only: hide tool calls, thinking and notices |
+| `a` | answers only: prompts and the final answer of each turn |
 | `tab` `enter`, click | move between folds, open or close one |
 | `e` | expand or collapse all |
 | `/` `n` `N` | search |
@@ -61,8 +64,16 @@ from reaching it through DNS rebinding.
 
 The page renders Markdown and math, folds tool calls (details load when opened),
 has a rail of the conversation's turns on the right that previews each turn on
-hover and jumps on click, and updates live. Keys: `t` chat only, `j` `k` next and
-previous turn, `/` filter sessions.
+hover and jumps on click, and updates live. The buttons in the header switch
+between everything, chat only and answers only (`t`, `a`). Press `?` or Ctrl-K,
+or click ⋯, for a list of all commands with their keys; type to filter it, and
+pick one with the arrow keys and Enter or with the mouse. ☰ or `s` hides the
+session list, and dragging its edge changes its width. On a phone the list opens
+as a drawer.
+
+Copying a selection gives Markdown: formulas as TeX, code as fenced blocks, and
+lists, tables and emphasis in Markdown syntax. The Copy button under a message
+copies its Markdown source.
 
 To keep it running, as a systemd user service:
 

@@ -1,5 +1,5 @@
 //! Transcript items as terminal rows. Tool calls, thinking, notices and long prompts fold;
-//! chat-only mode leaves out everything but the conversation.
+//! the chat and answers views leave out more of the transcript.
 
 use std::collections::HashSet;
 
@@ -30,9 +30,20 @@ impl Fold {
     }
 }
 
+/// How much of the transcript is shown.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum View {
+    /// Everything, with tool calls and thinking folded.
+    All,
+    /// Prompts and all the agent's messages.
+    Chat,
+    /// Prompts and the final answer of each turn.
+    Answers,
+}
+
 pub struct Opts<'a> {
     pub width: usize,
-    pub chat: bool,
+    pub view: View,
     pub open: &'a HashSet<Fold>,
 }
 
@@ -41,12 +52,17 @@ const PROMPT_ROWS: usize = 16;
 /// Lines of a tool section shown when it is expanded; `y` copies the rest.
 const SECTION_LINES: usize = 400;
 
-pub fn layout(i: usize, item: &Item, o: &Opts) -> Vec<Row> {
+/// Rows of item `i`. Block `answer` holds the final answer of its turn, if the item has it.
+pub fn layout(i: usize, item: &Item, answer: Option<usize>, o: &Opts) -> Vec<Row> {
     let mut rows = match item.role {
         Role::User => user(i, item, o),
+        Role::Assistant if o.view == View::Answers => match answer.and_then(|b| item.blocks.get(b)) {
+            Some(Block::Text(s)) => text(s, o),
+            _ => Vec::new(),
+        },
         Role::Assistant => assistant(i, item, o),
         Role::Event => match item.blocks.first() {
-            Some(Block::Notice(n)) if !o.chat || n.kind.structural() => notice(Fold::Notice(i), n, o),
+            Some(Block::Notice(n)) if o.view == View::All || n.kind.structural() => notice(Fold::Notice(i), n, o),
             _ => Vec::new(),
         },
     };
@@ -105,34 +121,35 @@ fn user(i: usize, item: &Item, o: &Opts) -> Vec<Row> {
     rows
 }
 
+/// A message from the agent, marked with a bullet.
+fn text(s: &str, o: &Opts) -> Vec<Row> {
+    let rows = md::render(s, o.width.saturating_sub(2), theme::TEXT).into_iter();
+    rows.enumerate().map(|(k, r)| r.indent(if k == 0 { Span::styled("⏺ ", theme::BULLET) } else { Span::raw("  ") }, true)).collect()
+}
+
 fn assistant(i: usize, item: &Item, o: &Opts) -> Vec<Row> {
     let mut rows: Vec<Row> = Vec::new();
-    let w = o.width.saturating_sub(2);
+    let all = o.view == View::All;
     let blocks = &item.blocks;
     let mut b = 0;
     while b < blocks.len() {
         let mut add = Vec::new();
         match &blocks[b] {
-            Block::Text(s) => {
-                for (k, r) in md::render(s, w, theme::TEXT).into_iter().enumerate() {
-                    let prefix = if k == 0 { Span::styled("⏺ ", theme::BULLET) } else { Span::raw("  ") };
-                    add.push(r.indent(prefix, true));
-                }
-            }
+            Block::Text(s) => add = text(s, o),
             Block::Tool(_) | Block::Thinking(_) => match item.run_end(b) {
                 Some(end) => {
-                    if !o.chat {
+                    if all {
                         group(i, b, &blocks[b..end], o, &mut add);
                     }
                     b = end - 1;
                 }
-                None if !o.chat => thinking(Fold::Thinking(i, b), &blocks[b], 0, o, &mut add),
+                None if all => thinking(Fold::Thinking(i, b), &blocks[b], 0, o, &mut add),
                 None => {}
             },
             Block::Image(img) => {
                 add.push(Row::new(vec![Span::raw("  "), Span::styled(format!("▣ image ({})", img.mime), theme::MUTED)]));
             }
-            Block::Notice(n) if !o.chat => add = notice(Fold::Notice(i), n, o),
+            Block::Notice(n) if all => add = notice(Fold::Notice(i), n, o),
             _ => {}
         }
         if !add.is_empty() {

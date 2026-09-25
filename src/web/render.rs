@@ -19,8 +19,10 @@ pub struct ItemJson {
     role: Role,
     time: Option<i64>,
     html: String,
-    /// Markdown for "copy".
-    md: String,
+    /// Markdown of each text block, for copying.
+    texts: Vec<String>,
+    /// Holds the final answer of its turn, in its last text block.
+    answer: bool,
     /// One line of plain text for the navigation rail.
     preview: String,
     kind: Option<NoticeKind>,
@@ -44,10 +46,12 @@ pub fn snapshot(l: &Live) -> Value {
 /// Items changed after revision `rev`.
 pub fn since(l: &Live, rev: u64) -> Vec<ItemJson> {
     let sid = escape(&l.meta.id);
-    l.t.items.iter().enumerate().filter(|(_, it)| it.rev > rev).map(|(i, it)| item(&sid, i, it)).collect()
+    let answers = l.t.answers();
+    l.t.items.iter().enumerate().filter(|(_, it)| it.rev > rev).map(|(i, it)| item(&sid, i, it, answers[i])).collect()
 }
 
-fn item(sid: &str, i: usize, it: &Item) -> ItemJson {
+/// Item `i`, whose block `answer` is the final answer of its turn, if it has it.
+fn item(sid: &str, i: usize, it: &Item, answer: Option<usize>) -> ItemJson {
     let mut html = String::new();
     let mut b = 0;
     while b < it.blocks.len() {
@@ -56,7 +60,7 @@ fn item(sid: &str, i: usize, it: &Item) -> ItemJson {
                 html.push_str(&format!("<div class=\"prompt\">{}</div>", escape(s.trim_end())));
             }
             Block::Text(s) => {
-                html.push_str("<div class=\"md\">");
+                html.push_str(if answer == Some(b) { "<div class=\"md final\">" } else { "<div class=\"md\">" });
                 html.push_str(&to_html(s));
                 html.push_str("</div>");
             }
@@ -72,20 +76,24 @@ fn item(sid: &str, i: usize, it: &Item) -> ItemJson {
         }
         b += 1;
     }
-    let (md, preview) = match it.role {
-        Role::User => {
-            let text = it.text();
-            let preview = one_line(&text, 240);
-            (text, preview)
-        }
-        Role::Assistant => (it.text(), it.last_text().map(|s| plain(s, 240)).unwrap_or_default()),
-        Role::Event => (String::new(), String::new()),
+    let texts: Vec<String> = it
+        .blocks
+        .iter()
+        .filter_map(|b| match b {
+            Block::Text(s) => Some(s.trim().to_string()),
+            _ => None,
+        })
+        .collect();
+    let preview = match it.role {
+        Role::User => one_line(&texts.join("\n\n"), 240),
+        Role::Assistant => it.last_text().map(|s| plain(s, 240)).unwrap_or_default(),
+        Role::Event => String::new(),
     };
     let kind = it.blocks.iter().find_map(|b| match b {
         Block::Notice(n) => Some(n.kind),
         _ => None,
     });
-    ItemJson { i, role: it.role, time: it.time, html, md, preview, kind }
+    ItemJson { i, role: it.role, time: it.time, html, texts, answer: answer.is_some(), preview, kind }
 }
 
 fn thinking(sid: &str, i: usize, b: usize) -> String {

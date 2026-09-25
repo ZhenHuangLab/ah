@@ -7,10 +7,16 @@
 <link rel="icon" href="data:,">
 <script>
   (function () {
+    var root = document.documentElement;
     var t = localStorage.getItem('ah.theme');
     if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    document.documentElement.dataset.theme = t;
-    if (localStorage.getItem('ah.chat') === '1') document.documentElement.classList.add('chat');
+    root.dataset.theme = t;
+    var v = localStorage.getItem('ah.view');
+    if (v === 'chat' || v === 'answers') root.classList.add('chat');
+    if (v === 'answers') root.classList.add('answers');
+    if (localStorage.getItem('ah.side') === '0') root.classList.add('side-closed');
+    var w = +localStorage.getItem('ah.sideW');
+    if (w) root.style.setProperty('--side-w', w + 'px');
   })();
 </script>
 <link rel="stylesheet" href="assets/vendor/katex/katex.min.css">
@@ -28,15 +34,21 @@
     <button data-agent="" class="on">All</button><button data-agent="claude">Claude</button><button data-agent="codex">Codex</button><button data-agent="pi">pi</button>
   </div>
   <nav id="list"></nav>
+  <div id="grip" title="Drag to resize, double-click to reset"></div>
 </aside>
 <main id="main">
   <header id="top">
-    <button id="menu" class="icon" title="Sessions">☰</button>
+    <button id="menu" class="icon" title="Show or hide the sessions (s)">☰</button>
     <div class="heading">
       <h1 id="title">ah</h1>
       <div id="sub"></div>
     </div>
-    <button id="mode" title="Hide tool calls and show only the conversation (t)">Chat only</button>
+    <div id="views" role="group" aria-label="View">
+      <button data-view="all" title="Everything, with tool calls folded">All</button>
+      <button data-view="chat" title="Hide tool calls, thinking and notices (t)">Chat</button>
+      <button data-view="answers" title="Only prompts and final answers (a)">Answers</button>
+    </div>
+    <button id="cmds" class="icon" title="Commands and shortcuts (?)">⋯</button>
     <button id="theme" class="icon" title="Switch theme">◐</button>
   </header>
   <div id="scroll">
@@ -45,7 +57,15 @@
   </div>
   <nav id="rail"><div id="ticks"></div></nav>
   <div id="card" hidden><div class="card-t"></div><div class="card-b"></div><div class="card-w"></div></div>
-  <button id="bottom" class="icon" title="Jump to the latest message" hidden>↓</button>
+  <button id="bottom" class="icon" title="Jump to the latest message (G)" hidden>↓</button>
+  <div id="toast" hidden></div>
 </main>
+<div id="palette" hidden>
+  <div class="pal" role="dialog" aria-label="Commands">
+    <input id="pal-q" type="text" placeholder="Search commands" autocomplete="off" spellcheck="false">
+    <div id="pal-list" role="listbox"></div>
+    <div class="pal-foot">↑↓ choose · enter run · esc close · open with ? or Ctrl K</div>
+  </div>
+</div>
 </body>
 </html>
