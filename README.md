@@ -1,7 +1,27 @@
-# ah
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+    <img src="docs/logo-light.svg" width="120" alt="">
+  </picture>
+</p>
 
-Agent history: read Claude Code, Codex and pi sessions in the terminal or in a
-browser on another machine.
+<h1 align="center">ah</h1>
+
+<p align="center">
+  Agent history: read Claude Code, Codex and pi sessions in the terminal or in a
+  browser on another machine.
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Rust-DEA584?logo=rust&logoColor=black" alt="Written in Rust">
+  <img src="https://img.shields.io/badge/works_with-Claude_Code_%C2%B7_Codex_%C2%B7_pi-2DF9C0" alt="Works with Claude Code, Codex and pi">
+</p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/all-dark.png">
+  <img src="docs/all-light.png" alt="The browser view: sessions by date on the left, and a Claude Code session with one group of tool calls opened">
+</picture>
 
 `ah` finds every session of the three agents on this machine and shows the whole
 transcript, including everything before a context compaction. Tool calls and
@@ -66,9 +86,28 @@ The page renders Markdown and math, folds tool calls (details load when opened),
 and updates live. Sessions of more than two turns get a rail of their turns on
 the right that previews each turn on hover and jumps on click. The button in the
 header names the current view and switches to the next: everything, chat only,
-answers only (`t`, `a`). Press `?` or Ctrl-K, or click ⋯, for a list of all
-commands with their keys; type to filter it, and pick one with the arrow keys and
-Enter or with the mouse.
+answers only (`t`, `a`). Chat only hides tool calls, thinking and notices:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/chat-dark.png">
+  <img src="docs/chat-light.png" alt="The same turn in the chat view: the prompt, the notes between tool calls and the answer">
+</picture>
+
+Answers only keeps your prompts and the final answer of each turn. Here the
+session list is grouped by folder:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/answers-dark.png">
+  <img src="docs/answers-light.png" alt="The answers view: prompts and final answers only, next to a session list grouped by folder">
+</picture>
+
+Press `?` or Ctrl-K, or click ⋯, for a list of all commands with their keys; type
+to filter it, and pick one with the arrow keys and Enter or with the mouse.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/palette-dark.png">
+  <img src="docs/palette-light.png" alt="The command list open over a pi session, with each command and its keys">
+</picture>
 
 The session list is grouped by date, or by folder under headers that open and
 close ("By date" switches). ☰ or `s` hides it, and dragging its edge changes its
@@ -120,4 +159,5 @@ conversation resumes.
 ## License
 
 MIT; see [LICENSE](LICENSE). `assets/vendor` contains KaTeX (MIT) and
-highlight.js (BSD-3-Clause) with their license files.
+highlight.js (BSD-3-Clause) with their license files. The screenshots show
+invented sessions.
