@@ -4,6 +4,9 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 
 const LIVE_MS = 2 * 60 * 1000;
+const ICON_COPY = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/>' +
+  '<path d="M10.5 5.5V4.3a1.8 1.8 0 0 0-1.8-1.8H4.3a1.8 1.8 0 0 0-1.8 1.8v4.4a1.8 1.8 0 0 0 1.8 1.8h1.2"/></svg>';
+const ICON_DONE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
 const VIEWS = ['all', 'chat', 'answers'];
 const VIEW_NAMES = { all: 'All', chat: 'Chat', answers: 'Answers' };
 const VIEW_HELP = {
@@ -71,16 +74,22 @@ function project(p) {
   return t.slice(t.lastIndexOf('/') + 1) || t;
 }
 
+/** Puts `s` on the clipboard; rejects when the browser refuses. */
 async function copyText(s) {
-  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(s);
-  // Plain http over the tailnet is not a secure context, so fall back to execCommand.
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      return await navigator.clipboard.writeText(s);
+    } catch (_) { /* try the older way below */ }
+  }
+  // Plain http over the tailnet is not a secure context, so this is the usual way.
   const ta = document.createElement('textarea');
   ta.value = s;
   ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
   document.body.appendChild(ta);
   ta.select();
-  document.execCommand('copy');
+  const ok = document.execCommand('copy');
   ta.remove();
+  if (!ok) throw new Error('the browser refused to copy');
 }
 
 let toastTimer = 0;
@@ -333,8 +342,10 @@ function put(it) {
     (it.role === 'assistant' && !text ? ' bare' : '') + (it.answer ? ' answer' : '');
   let acts = '';
   if (text) {
-    const t = it.role === 'user' && it.time ? `<span>${esc(when(it.time))}</span>` : '';
-    acts = `<div class="acts">${t}<button class="copy">Copy</button></div>`;
+    // The time is shown in the reader's own time zone.
+    const t = it.time ? `<span>${esc(when(it.time))}</span>` : '';
+    const copy = `<button class="copy" title="Copy as Markdown" aria-label="Copy as Markdown">${ICON_COPY}</button>`;
+    acts = `<div class="acts">${it.role === 'user' ? t + copy : copy + t}</div>`;
   }
   el.innerHTML = it.html + acts;
   el.keep = keep;
@@ -497,7 +508,7 @@ function copyCurrent() {
   const it = readingItem();
   const md = it && itemMarkdown(it);
   if (!md) return toast('Nothing to copy here');
-  copyText(md).then(() => toast('Copied as Markdown'));
+  copyText(md).then(() => toast('Copied as Markdown'), () => toast('Could not copy'));
 }
 
 function buildRail() {
@@ -922,9 +933,9 @@ function wire() {
     if (!b) return;
     const it = S.cur.items[+b.closest('.item').dataset.i];
     copyText(itemMarkdown(it)).then(() => {
-      b.textContent = 'Copied';
-      setTimeout(() => { b.textContent = 'Copy'; }, 1200);
-    });
+      b.innerHTML = ICON_DONE;
+      setTimeout(() => { b.innerHTML = ICON_COPY; }, 1200);
+    }, () => toast('Could not copy'));
   });
 
   document.addEventListener('copy', e => {

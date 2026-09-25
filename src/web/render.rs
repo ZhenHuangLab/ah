@@ -17,6 +17,7 @@ const DETAIL_CAP: usize = 512 * 1024;
 pub struct ItemJson {
     i: usize,
     role: Role,
+    /// When the message was written: its latest text, or the start of the item.
     time: Option<i64>,
     html: String,
     /// Markdown of each text block, for copying.
@@ -93,7 +94,7 @@ fn item(sid: &str, i: usize, it: &Item, answer: Option<usize>) -> ItemJson {
         Block::Notice(n) => Some(n.kind),
         _ => None,
     });
-    ItemJson { i, role: it.role, time: it.time, html, texts, answer: answer.is_some(), preview, kind }
+    ItemJson { i, role: it.role, time: it.text_time.or(it.time), html, texts, answer: answer.is_some(), preview, kind }
 }
 
 fn thinking(sid: &str, i: usize, b: usize) -> String {

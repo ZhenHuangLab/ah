@@ -61,8 +61,9 @@ pub fn layout(i: usize, item: &Item, answer: Option<usize>, o: &Opts) -> Vec<Row
             _ => Vec::new(),
         },
         Role::Assistant => assistant(i, item, o),
+        // The chat view keeps the notices that explain the shape of the conversation.
         Role::Event => match item.blocks.first() {
-            Some(Block::Notice(n)) if o.view == View::All || n.kind.structural() => notice(Fold::Notice(i), n, o),
+            Some(Block::Notice(n)) if o.view == View::All || (o.view == View::Chat && n.kind.structural()) => notice(Fold::Notice(i), n, o),
             _ => Vec::new(),
         },
     };

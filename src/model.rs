@@ -58,7 +58,10 @@ pub enum Role {
 
 pub struct Item {
     pub role: Role,
+    /// When the item started.
     pub time: Option<i64>,
+    /// When its latest text was written; for an agent's turn, when the answer came.
+    pub text_time: Option<i64>,
     pub blocks: Vec<Block>,
     /// Transcript revision at which this item last changed.
     pub rev: u64,
@@ -214,9 +217,9 @@ impl Transcript {
             self.answer = None;
         }
         let idx = self.items.len();
-        self.items.push(Item { role, time, blocks: Vec::new(), rev: self.rev });
+        self.items.push(Item { role, time, text_time: None, blocks: Vec::new(), rev: self.rev });
         for b in blocks {
-            self.add_block(idx, b);
+            self.add_block(idx, b, time);
         }
         idx
     }
@@ -232,10 +235,10 @@ impl Transcript {
             Some(it) if it.role == Role::Assistant => self.items.len() - 1,
             _ => self.push(Role::Assistant, time, Vec::new()),
         };
-        self.add_block(idx, block);
+        self.add_block(idx, block, time);
     }
 
-    fn add_block(&mut self, idx: usize, mut block: Block) {
+    fn add_block(&mut self, idx: usize, mut block: Block, time: Option<i64>) {
         // Some agents store colored text; escapes would show up as garbage in both views.
         match &mut block {
             Block::Text(s) | Block::Thinking(s) => strip(s),
@@ -246,7 +249,11 @@ impl Transcript {
             _ => {}
         }
         let item = &mut self.items[idx];
-        let answer = item.role == Role::Assistant && matches!(&block, Block::Text(s) if !s.trim().is_empty());
+        let text = matches!(&block, Block::Text(s) if !s.trim().is_empty());
+        if text {
+            item.text_time = time.or(item.text_time);
+        }
+        let answer = text && item.role == Role::Assistant;
         item.blocks.push(block);
         item.rev = self.rev;
         if answer {

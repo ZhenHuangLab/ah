@@ -75,8 +75,9 @@ close ("By date" switches). ☰ or `s` hides it, and dragging its edge changes i
 width. On a phone it opens as a drawer.
 
 Copying a selection gives Markdown: formulas as TeX, code as fenced blocks, and
-lists, tables and emphasis in Markdown syntax. The Copy button under a message
-copies its Markdown source.
+lists, tables and emphasis in Markdown syntax. The copy icon under a message
+copies its Markdown source; beside it is the time the message was written, in
+the browser's time zone.
 
 To keep it running, as a systemd user service:
 
