@@ -6,8 +6,9 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+use crate::markdown;
 use crate::model::{Agent, SessionMeta, Transcript};
-use crate::parse::{self, one_line};
+use crate::parse;
 
 /// Where each agent keeps its transcripts. Missing directories are left out.
 #[derive(Clone, Debug)]
@@ -129,7 +130,7 @@ pub fn meta(agent: Agent, path: &Path, listed: bool) -> Option<SessionMeta> {
             break;
         }
     }
-    let prompt = t.first_prompt().map(|p| one_line(p, 200));
+    let prompt = t.first_prompt().map(|p| markdown::plain(p, 200));
     if listed && prompt.is_none() {
         return None;
     }
