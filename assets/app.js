@@ -101,6 +101,14 @@ function toast(msg) {
   toastTimer = setTimeout(() => { t.hidden = true; }, 1400);
 }
 
+const AGENT_NAMES = { claude: 'Claude Code', codex: 'Codex', pi: 'pi' };
+
+/** The agent's mark, named in a tooltip. */
+function agentIcon(agent) {
+  const name = esc(AGENT_NAMES[agent] || agent);
+  return `<span class="agent" title="${name}"><svg class="ico" role="img" aria-label="${name}"><use href="#i-${esc(agent)}"/></svg></span>`;
+}
+
 /** Markdown of an item's text; in the answers view, of the final answer it shows. */
 function itemMarkdown(it) {
   return S.view === 'answers' && it.answer ? it.texts[it.texts.length - 1] : it.texts.join('\n\n');
@@ -126,7 +134,7 @@ function row(m) {
   const where = S.group === 'folder' ? '' : `<span class="p" title="${esc(m.cwd)}">${esc(project(m.cwd))}</span>`;
   return `<a class="row${on}" href="#/${encodeURIComponent(m.id)}" data-id="${esc(m.id)}">` +
     `<div class="t">${esc(m.title)}</div>` +
-    `<div class="m">${live}<span class="badge ${m.agent}">${m.agent}</span>${where}<span>· ${ago(m.modified)}</span></div></a>`;
+    `<div class="m">${live}${agentIcon(m.agent)}${where}<span>· ${ago(m.modified)}</span></div></a>`;
 }
 
 function renderList() {
@@ -245,7 +253,7 @@ function renderHead() {
   $('#title').textContent = m.title;
   document.title = `${m.title} · ah`;
   const live = Date.now() - m.modified < LIVE_MS ? '<span class="dot" title="Active"></span>' : '';
-  $('#sub').innerHTML = `${live}<span class="badge ${m.agent}">${m.agent}</span>` +
+  $('#sub').innerHTML = `${live}${agentIcon(m.agent)}` +
     `<span title="${esc(m.cwd)}">${esc(tilde(m.cwd))}</span>` +
     (m.model ? `<span>${esc(m.model)}</span>` : '') +
     `<span>${esc(when(m.started))}</span>`;
