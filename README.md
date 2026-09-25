@@ -63,13 +63,16 @@ Tailscale name (`machine` or `machine.<tailnet>.ts.net`); this keeps web pages
 from reaching it through DNS rebinding.
 
 The page renders Markdown and math, folds tool calls (details load when opened),
-has a rail of the conversation's turns on the right that previews each turn on
-hover and jumps on click, and updates live. The buttons in the header switch
-between everything, chat only and answers only (`t`, `a`). Press `?` or Ctrl-K,
-or click ⋯, for a list of all commands with their keys; type to filter it, and
-pick one with the arrow keys and Enter or with the mouse. ☰ or `s` hides the
-session list, and dragging its edge changes its width. On a phone the list opens
-as a drawer.
+and updates live. Sessions of more than two turns get a rail of their turns on
+the right that previews each turn on hover and jumps on click. The button in the
+header names the current view and switches to the next: everything, chat only,
+answers only (`t`, `a`). Press `?` or Ctrl-K, or click ⋯, for a list of all
+commands with their keys; type to filter it, and pick one with the arrow keys and
+Enter or with the mouse.
+
+The session list is grouped by date, or by folder under headers that open and
+close ("By date" switches). ☰ or `s` hides it, and dragging its edge changes its
+width. On a phone it opens as a drawer.
 
 Copying a selection gives Markdown: formulas as TeX, code as fenced blocks, and
 lists, tables and emphasis in Markdown syntax. The Copy button under a message

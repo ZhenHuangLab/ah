@@ -5,6 +5,12 @@ const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 
 const LIVE_MS = 2 * 60 * 1000;
 const VIEWS = ['all', 'chat', 'answers'];
+const VIEW_NAMES = { all: 'All', chat: 'Chat', answers: 'Answers' };
+const VIEW_HELP = {
+  all: 'Everything, with tool calls folded. Click for chat only (t)',
+  chat: 'Chat only: no tool calls, thinking or notices. Click for answers only (a)',
+  answers: 'Answers only: prompts and final answers. Click to show everything',
+};
 const root = document.documentElement;
 const scroller = $('#scroll');
 const conv = $('#conv');
@@ -17,6 +23,9 @@ const S = {
   sessions: [],
   agent: localStorage.getItem('ah.agent') || '',
   filter: '',
+  // Sessions listed by date, or by folder under headers that open and close.
+  group: localStorage.getItem('ah.group') === 'folder' ? 'folder' : 'date',
+  folders: new Set(JSON.parse(localStorage.getItem('ah.folders') || '[]')),
   // all: everything; chat: no tool calls, thinking or notices; answers: prompts and final answers.
   view: VIEWS.includes(localStorage.getItem('ah.view')) ? localStorage.getItem('ah.view') : 'all',
   // The open session: {id, gen, rev, meta, items: [], els: []}.
@@ -101,29 +110,65 @@ function group(ms) {
   return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'long' });
 }
 
+function row(m) {
+  const live = Date.now() - m.modified < LIVE_MS ? '<span class="dot" title="Active"></span>' : '';
+  const on = S.cur && S.cur.id === m.id ? ' on' : '';
+  // Under a folder header the folder name would repeat on every row.
+  const where = S.group === 'folder' ? '' : `<span class="p" title="${esc(m.cwd)}">${esc(project(m.cwd))}</span>`;
+  return `<a class="row${on}" href="#/${encodeURIComponent(m.id)}" data-id="${esc(m.id)}">` +
+    `<div class="t">${esc(m.title)}</div>` +
+    `<div class="m">${live}<span class="badge ${m.agent}">${m.agent}</span>${where}<span>· ${ago(m.modified)}</span></div></a>`;
+}
+
 function renderList() {
   const words = S.filter.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = S.sessions.filter(m => (!S.agent || m.agent === S.agent) &&
+    words.every(w => `${m.title} ${m.cwd} ${m.id} ${m.agent}`.toLowerCase().includes(w)));
   let html = '';
-  let grp = '';
-  for (const m of S.sessions) {
-    if (S.agent && m.agent !== S.agent) continue;
-    if (words.length) {
-      const hay = `${m.title} ${m.cwd} ${m.id} ${m.agent}`.toLowerCase();
-      if (!words.every(w => hay.includes(w))) continue;
+  if (S.group === 'folder') {
+    // Folders in order of their latest session. While filtering, all of them are open.
+    const folders = new Map();
+    const uses = {};
+    for (const m of shown) {
+      if (!folders.has(m.cwd)) {
+        folders.set(m.cwd, []);
+        uses[project(m.cwd)] = (uses[project(m.cwd)] || 0) + 1;
+      }
+      folders.get(m.cwd).push(m);
     }
-    const g = group(m.modified);
-    if (g !== grp) {
-      html += `<div class="grp">${esc(g)}</div>`;
-      grp = g;
+    for (const [cwd, list] of folders) {
+      const open = words.length > 0 || S.folders.has(cwd);
+      // Two folders of the same name are told apart by their paths.
+      const name = uses[project(cwd)] > 1 ? tilde(cwd) : project(cwd) || '(no folder)';
+      html += `<button class="folder${open ? ' open' : ''}" data-cwd="${esc(cwd)}" title="${esc(cwd)}">` +
+        `<span>${esc(name)}</span><span class="n">${list.length}</span></button>`;
+      if (open) html += list.map(row).join('');
     }
-    const live = Date.now() - m.modified < LIVE_MS ? '<span class="dot" title="Active"></span>' : '';
-    const on = S.cur && S.cur.id === m.id ? ' on' : '';
-    html += `<a class="row${on}" href="#/${encodeURIComponent(m.id)}" data-id="${esc(m.id)}">` +
-      `<div class="t">${esc(m.title)}</div>` +
-      `<div class="m">${live}<span class="badge ${m.agent}">${m.agent}</span>` +
-      `<span class="p" title="${esc(m.cwd)}">${esc(project(m.cwd))}</span><span>· ${ago(m.modified)}</span></div></a>`;
+  } else {
+    let grp = '';
+    for (const m of shown) {
+      const g = group(m.modified);
+      if (g !== grp) {
+        html += `<div class="grp">${esc(g)}</div>`;
+        grp = g;
+      }
+      html += row(m);
+    }
   }
   $('#list').innerHTML = html || '<div class="grp">No sessions</div>';
+  $('#group').textContent = S.group === 'folder' ? 'By folder' : 'By date';
+}
+
+function toggleGrouping() {
+  S.group = S.group === 'folder' ? 'date' : 'folder';
+  localStorage.setItem('ah.group', S.group);
+  renderList();
+}
+
+function toggleFolder(cwd) {
+  if (!S.folders.delete(cwd)) S.folders.add(cwd);
+  localStorage.setItem('ah.folders', JSON.stringify([...S.folders]));
+  renderList();
 }
 
 let listTimer = 0;
@@ -469,6 +514,9 @@ function buildRail() {
     }
   }
   S.turns = turns;
+  // A session of one or two turns fits on a screen or two; the rail would only add noise.
+  $('#rail').hidden = turns.length <= 2;
+  $('#main').classList.toggle('norail', turns.length <= 2);
   ticks.innerHTML = turns.map((t, k) => {
     const w = Math.round(8 + Math.min(14, 3 * Math.log2(1 + t.size / 200)));
     return `<button class="tick" data-k="${k}" style="--w:${w}px" aria-label="Turn ${k + 1}"></button>`;
@@ -558,7 +606,7 @@ function setView(v) {
   localStorage.setItem('ah.view', v);
   root.classList.toggle('chat', v !== 'all');
   root.classList.toggle('answers', v === 'answers');
-  for (const b of $$('#views button')) b.classList.toggle('on', b.dataset.view === v);
+  renderViewButton();
   if (S.follow) {
     stick();
   } else {
@@ -567,6 +615,14 @@ function setView(v) {
   }
   S.on = -1;
   spy();
+}
+
+/** The header button names the current view and switches to the next one. */
+function renderViewButton() {
+  const b = $('#view');
+  b.textContent = VIEW_NAMES[S.view];
+  b.title = VIEW_HELP[S.view];
+  b.classList.toggle('on', S.view !== 'all');
 }
 
 function switchTheme() {
@@ -590,6 +646,7 @@ const COMMANDS = [
   { label: 'Copy the message at the reading line', keys: ['y'], run: copyCurrent },
   { label: 'Show or hide the sessions', keys: ['s'], run: () => toggleSide() },
   { label: 'Find a session', keys: ['/'], run: findSession },
+  { label: 'Group the sessions by folder', keys: [], on: () => S.group === 'folder', run: toggleGrouping },
   { label: 'Switch between light and dark', keys: [], run: switchTheme },
 ];
 
@@ -812,7 +869,7 @@ function wireGrip() {
 
 function wire() {
   for (const b of $$('#agents button')) b.classList.toggle('on', b.dataset.agent === S.agent);
-  for (const b of $$('#views button')) b.classList.toggle('on', b.dataset.view === S.view);
+  renderViewButton();
   $('#agents').addEventListener('click', e => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -829,9 +886,11 @@ function wire() {
   $('#main').addEventListener('click', e => {
     if (!e.target.closest('#menu')) root.classList.remove('side-open');
   });
-  $('#views').addEventListener('click', e => {
-    const b = e.target.closest('button');
-    if (b) setView(b.dataset.view);
+  $('#view').addEventListener('click', () => setView(VIEWS[(VIEWS.indexOf(S.view) + 1) % VIEWS.length]));
+  $('#group').addEventListener('click', toggleGrouping);
+  $('#list').addEventListener('click', e => {
+    const f = e.target.closest('.folder');
+    if (f) toggleFolder(f.dataset.cwd);
   });
   $('#cmds').addEventListener('click', openPalette);
   $('#theme').addEventListener('click', switchTheme);

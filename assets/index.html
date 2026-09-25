@@ -30,8 +30,11 @@
   <div class="side-head">
     <input id="filter" type="search" placeholder="Filter sessions" autocomplete="off" spellcheck="false">
   </div>
-  <div id="agents">
-    <button data-agent="" class="on">All</button><button data-agent="claude">Claude</button><button data-agent="codex">Codex</button><button data-agent="pi">pi</button>
+  <div class="chips">
+    <div id="agents">
+      <button data-agent="" class="on">All</button><button data-agent="claude">Claude</button><button data-agent="codex">Codex</button><button data-agent="pi">pi</button>
+    </div>
+    <button id="group" title="Group the sessions by date or by folder">By date</button>
   </div>
   <nav id="list"></nav>
   <div id="grip" title="Drag to resize, double-click to reset"></div>
@@ -43,11 +46,7 @@
       <h1 id="title">ah</h1>
       <div id="sub"></div>
     </div>
-    <div id="views" role="group" aria-label="View">
-      <button data-view="all" title="Everything, with tool calls folded">All</button>
-      <button data-view="chat" title="Hide tool calls, thinking and notices (t)">Chat</button>
-      <button data-view="answers" title="Only prompts and final answers (a)">Answers</button>
-    </div>
+    <button id="view">All</button>
     <button id="cmds" class="icon" title="Commands and shortcuts (?)">⋯</button>
     <button id="theme" class="icon" title="Switch theme">◐</button>
   </header>
