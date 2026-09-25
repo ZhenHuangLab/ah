@@ -38,6 +38,8 @@ pub const MATCH_ON: Style = Style::new().bg(Color::Indexed(136)).fg(Color::Index
 pub const BAR: Style = Style::new().bg(Color::Indexed(235)).fg(Color::Indexed(250));
 pub const BAR_KEY: Style = Style::new().bg(Color::Indexed(235)).fg(Color::Indexed(75));
 pub const SELECTED: Style = Style::new().bg(Color::Indexed(237));
+/// The mark above the session list, in the 256-color green nearest the web page's (#2df9c0).
+pub const LOGO: Style = fg(49).add_modifier(Modifier::BOLD);
 
 pub fn agent(name: &str) -> Style {
     match name {

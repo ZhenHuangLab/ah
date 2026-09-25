@@ -11,6 +11,11 @@ use super::theme;
 use crate::discover::{self, Roots};
 use crate::model::SessionMeta;
 
+/// A small mark above the list: "Ah!" in a frame, after the logo of the web page.
+const MARK: [&str; 3] = ["╭─────╮", "│ Ah! │", "╰─────╯"];
+/// Rows above the list.
+const HEAD: u16 = MARK.len() as u16;
+
 pub enum Pick {
     None,
     Open(SessionMeta),
@@ -139,9 +144,11 @@ impl Picker {
             MouseEventKind::ScrollDown => self.select(self.sel as isize + 3),
             MouseEventKind::ScrollUp => self.select(self.sel as isize - 3),
             MouseEventKind::Down(MouseButton::Left) => {
-                let row = m.row as usize;
-                if row >= 1 && row <= self.height && self.top + row - 1 < self.shown.len() {
-                    self.sel = self.top + row - 1;
+                if let Some(row) = (m.row as usize).checked_sub(HEAD as usize)
+                    && row < self.height
+                    && self.top + row < self.shown.len()
+                {
+                    self.sel = self.top + row;
                     return self.pick();
                 }
             }
@@ -153,19 +160,28 @@ impl Picker {
     pub fn draw(&mut self, f: &mut Frame) {
         let area = f.area();
         let buf = f.buffer_mut();
-        self.height = area.height.saturating_sub(2) as usize;
+        self.height = area.height.saturating_sub(HEAD + 1) as usize;
+        // Scrolled no further than needed to fill the rows, which matters after the terminal grows.
+        self.top = self.top.min(self.shown.len().saturating_sub(self.height));
         if self.sel < self.top {
             self.top = self.sel;
         } else if self.sel >= self.top + self.height {
             self.top = self.sel + 1 - self.height;
         }
         let w = area.width as usize;
-        let head = format!(" ah · {} of {} sessions · * this directory", self.shown.len(), self.all.len());
-        buf.set_stringn(area.x, area.y, head, w, theme::DIM);
+        // The rows above the bar at the bottom.
+        let above = area.height.saturating_sub(1);
+        for (k, line) in MARK.iter().enumerate().take(above as usize) {
+            buf.set_stringn(area.x + 1, area.y + k as u16, line, w.saturating_sub(1), theme::LOGO);
+        }
+        if above > 1 {
+            let head = format!("{} of {} sessions · * this directory", self.shown.len(), self.all.len());
+            buf.set_stringn(area.x + 10, area.y + 1, head, w.saturating_sub(10), theme::DIM);
+        }
         let now = jiff::Timestamp::now().as_millisecond();
         for (k, &i) in self.shown.iter().enumerate().skip(self.top).take(self.height) {
             let m = &self.all[i];
-            let y = area.y + 1 + (k - self.top) as u16;
+            let y = area.y + HEAD + (k - self.top) as u16;
             let on = k == self.sel;
             let base = if on { theme::SELECTED } else { theme::TEXT };
             buf.set_style(Rect::new(area.x, y, area.width, 1), base);
