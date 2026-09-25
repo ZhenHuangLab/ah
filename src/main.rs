@@ -11,7 +11,7 @@ mod web;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]

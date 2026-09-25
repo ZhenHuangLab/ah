@@ -2,7 +2,7 @@
 
 use base64::Engine;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::live::Live;
 use crate::markdown::{escape, plain, to_html};
@@ -131,7 +131,10 @@ fn notice(n: &Notice) -> String {
     if n.body.trim().is_empty() {
         format!("<div class=\"notice {kind}\"><span>{label}</span></div>")
     } else {
-        format!("<details class=\"notice {kind}\" data-k=\"n\"><summary>{label}</summary><div class=\"md\">{}</div></details>", to_html(&n.body))
+        format!(
+            "<details class=\"notice {kind}\" data-k=\"n\"><summary>{label}</summary><div class=\"md\">{}</div></details>",
+            to_html(&n.body)
+        )
     }
 }
 

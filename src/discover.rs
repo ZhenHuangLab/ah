@@ -26,9 +26,8 @@ impl Roots {
         let home = env_dir("HOME").unwrap_or_default();
         let claude = env_dir("CLAUDE_CONFIG_DIR").unwrap_or_else(|| home.join(".claude")).join("projects");
         let codex = env_dir("CODEX_HOME").unwrap_or_else(|| home.join(".codex"));
-        let pi = env_dir("PI_CODING_AGENT_SESSION_DIR").unwrap_or_else(|| {
-            env_dir("PI_CODING_AGENT_DIR").unwrap_or_else(|| home.join(".pi/agent")).join("sessions")
-        });
+        let pi = env_dir("PI_CODING_AGENT_SESSION_DIR")
+            .unwrap_or_else(|| env_dir("PI_CODING_AGENT_DIR").unwrap_or_else(|| home.join(".pi/agent")).join("sessions"));
         Roots {
             claude: Some(claude).filter(|p| p.is_dir()),
             codex: [codex.join("sessions"), codex.join("archived_sessions")].into_iter().filter(|p| p.is_dir()).collect(),
@@ -159,13 +158,11 @@ pub fn scan(roots: &Roots) -> Vec<SessionMeta> {
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(16);
     let chunk = files.len().div_ceil(threads).max(1);
     let mut out: Vec<SessionMeta> = std::thread::scope(|s| {
-        let handles: Vec<_> = files
-            .chunks(chunk)
-            .map(|c| s.spawn(move || c.iter().filter_map(|(a, p)| meta(*a, p, true)).collect::<Vec<_>>()))
-            .collect();
+        let handles: Vec<_> =
+            files.chunks(chunk).map(|c| s.spawn(move || c.iter().filter_map(|(a, p)| meta(*a, p, true)).collect::<Vec<_>>())).collect();
         handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect()
     });
-    out.sort_by(|a, b| b.modified.cmp(&a.modified));
+    out.sort_by_key(|m| std::cmp::Reverse(m.modified));
     dedupe(&mut out);
     out
 }

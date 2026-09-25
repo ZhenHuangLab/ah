@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 
-use pulldown_cmark::{html, CowStr, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, TagEnd, html};
 
 pub fn options() -> Options {
     Options::ENABLE_TABLES
@@ -63,36 +63,34 @@ fn convert_line(line: &str, out: &mut String) {
                 out.push_str(&line[i..end]);
                 i = end;
             }
-            b'\\' if i + 1 < b.len() => {
-                match b[i + 1] {
-                    b'(' => {
-                        out.push('$');
-                        i += 2;
-                        while i < b.len() && b[i] == b' ' {
-                            i += 1;
-                        }
-                    }
-                    b')' => {
-                        while out.ends_with(' ') {
-                            out.pop();
-                        }
-                        out.push('$');
-                        i += 2;
-                    }
-                    b'[' | b']' => {
-                        out.push_str("$$");
-                        i += 2;
-                    }
-                    b'\\' => {
-                        out.push_str("\\\\");
-                        i += 2;
-                    }
-                    _ => {
-                        out.push('\\');
+            b'\\' if i + 1 < b.len() => match b[i + 1] {
+                b'(' => {
+                    out.push('$');
+                    i += 2;
+                    while i < b.len() && b[i] == b' ' {
                         i += 1;
                     }
                 }
-            }
+                b')' => {
+                    while out.ends_with(' ') {
+                        out.pop();
+                    }
+                    out.push('$');
+                    i += 2;
+                }
+                b'[' | b']' => {
+                    out.push_str("$$");
+                    i += 2;
+                }
+                b'\\' => {
+                    out.push_str("\\\\");
+                    i += 2;
+                }
+                _ => {
+                    out.push('\\');
+                    i += 1;
+                }
+            },
             _ => {
                 let next = b[i..].iter().position(|&c| c == b'`' || c == b'\\').map_or(b.len(), |p| i + p.max(1));
                 out.push_str(&line[i..next]);
@@ -120,7 +118,8 @@ fn find_run(b: &[u8], n: usize) -> Option<usize> {
 }
 
 /// Inline tags models use in tables and prose that are safe to pass through.
-const SAFE_INLINE: &[&str] = &["<br>", "<br/>", "<br />", "<sup>", "</sup>", "<sub>", "</sub>", "<kbd>", "</kbd>", "<b>", "</b>", "<i>", "</i>", "<u>", "</u>"];
+const SAFE_INLINE: &[&str] =
+    &["<br>", "<br/>", "<br />", "<sup>", "</sup>", "<sub>", "</sub>", "<kbd>", "</kbd>", "<b>", "</b>", "<i>", "</i>", "<u>", "</u>"];
 
 fn safe_url(url: &str) -> bool {
     let lower = url.trim_start().to_ascii_lowercase();

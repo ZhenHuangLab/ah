@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use super::{fence, one_line, output, take_str, tokens, ts, Parser};
+use super::{Parser, fence, one_line, output, take_str, tokens, ts};
 use crate::model::{Block, Image, NoticeKind, Role, Transcript};
 
 #[derive(Default)]

@@ -250,17 +250,6 @@ impl Transcript {
         })
     }
 
-    pub fn tool_mut(&mut self, id: &str) -> Option<&mut Tool> {
-        let &(i, b) = self.tools.get(id)?;
-        let rev = self.rev;
-        let item = &mut self.items[i];
-        item.rev = rev;
-        match &mut item.blocks[b] {
-            Block::Tool(t) => Some(t),
-            _ => None,
-        }
-    }
-
     pub fn first_prompt(&self) -> Option<&str> {
         self.items.iter().filter(|i| i.role == Role::User).find_map(|i| {
             i.blocks.iter().find_map(|b| match b {

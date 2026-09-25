@@ -27,7 +27,14 @@ fn kind(name: &str) -> Kind {
         "grep" | "glob" | "find" | "ls" | "ffgrep" | "fffind" | "signal_grep" | "symbol_search" | "ast_grep_search" | "tool_search"
         | "codebase_search" | "file_search" | "list_dir" => Kind::Search,
         "websearch" | "webfetch" | "web_search" | "web_fetch" | "fetch_content" | "get_search_content" | "xai_x_search" => Kind::Web,
-        "agent" | "task" | "subagent" | "spawn_agent" | "get_subagent_result" | "steer_subagent" | "wait_agent" | "sendmessage"
+        "agent"
+        | "task"
+        | "subagent"
+        | "spawn_agent"
+        | "get_subagent_result"
+        | "steer_subagent"
+        | "wait_agent"
+        | "sendmessage"
         | "send_message" => Kind::Agent,
         _ => Kind::Other,
     }
@@ -97,14 +104,23 @@ pub fn arg(t: &Tool) -> String {
         };
     }
     const KEYS: &[&str] = &[
-        "file_path", "path", "filePath", "notebook_path", "query", "url", "description", "prompt", "skill", "subject", "message",
-        "agent_id", "task_id", "to", "target",
+        "file_path",
+        "path",
+        "filePath",
+        "notebook_path",
+        "query",
+        "url",
+        "description",
+        "prompt",
+        "skill",
+        "subject",
+        "message",
+        "agent_id",
+        "task_id",
+        "to",
+        "target",
     ];
-    KEYS.iter()
-        .find_map(|k| str_field(o, k))
-        .or_else(|| o.values().find_map(Value::as_str))
-        .map(|s| one_line(s, 200))
-        .unwrap_or_default()
+    KEYS.iter().find_map(|k| str_field(o, k)).or_else(|| o.values().find_map(Value::as_str)).map(|s| one_line(s, 200)).unwrap_or_default()
 }
 
 fn str_field<'a>(o: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
@@ -129,9 +145,7 @@ fn command(c: &Value) -> String {
 fn patch_files(s: &str) -> Option<String> {
     let files: Vec<&str> = s
         .lines()
-        .filter_map(|l| {
-            ["*** Update File: ", "*** Add File: ", "*** Delete File: "].iter().find_map(|p| l.strip_prefix(p))
-        })
+        .filter_map(|l| ["*** Update File: ", "*** Add File: ", "*** Delete File: "].iter().find_map(|p| l.strip_prefix(p)))
         .collect();
     (!files.is_empty()).then(|| files.join(", "))
 }
@@ -163,14 +177,14 @@ impl Section {
 /// Input and output of a call, formatted for reading.
 pub fn sections(t: &Tool) -> Vec<Section> {
     let mut out = input_sections(t);
-    if let Some(o) = &t.output {
-        if !o.text.trim().is_empty() {
-            let title = if o.error { "error" } else { "output" };
-            let mut s = Section::code(title, "", o.text.as_str());
-            s.markdown = !o.error && kind(&t.name) == Kind::Agent;
-            s.error = o.error;
-            out.push(s);
-        }
+    if let Some(o) = &t.output
+        && !o.text.trim().is_empty()
+    {
+        let title = if o.error { "error" } else { "output" };
+        let mut s = Section::code(title, "", o.text.as_str());
+        s.markdown = !o.error && kind(&t.name) == Kind::Agent;
+        s.error = o.error;
+        out.push(s);
     }
     out
 }

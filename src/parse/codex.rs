@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 
-use super::{data_url, iso_ms, output, take_str, ts, Parser};
+use super::{Parser, data_url, iso_ms, output, take_str, ts};
 use crate::model::{Block, Image, NoticeKind, Role, Transcript};
 
 /// User-role messages that Codex injects as context rather than typed prompts.
@@ -154,13 +154,12 @@ fn result(v: Value) -> (String, Vec<Image>, bool) {
     match v {
         Value::String(s) => {
             // Older rollouts wrap shell output as `{"output": ..., "metadata": {"exit_code": n}}`.
-            if s.starts_with('{') {
-                if let Ok(mut o) = serde_json::from_str::<Value>(&s) {
-                    if let Some(text) = o["output"].as_str().map(String::from) {
-                        let code = o["metadata"]["exit_code"].take().as_i64().unwrap_or(0);
-                        return (text, Vec::new(), code != 0);
-                    }
-                }
+            if s.starts_with('{')
+                && let Ok(mut o) = serde_json::from_str::<Value>(&s)
+                && let Some(text) = o["output"].as_str().map(String::from)
+            {
+                let code = o["metadata"]["exit_code"].take().as_i64().unwrap_or(0);
+                return (text, Vec::new(), code != 0);
             }
             let error = exit_code(&s).is_some_and(|c| c != 0);
             (s, Vec::new(), error)

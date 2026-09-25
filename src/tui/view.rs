@@ -1,0 +1,632 @@
+//! The conversation view: scrolling, folds, search, selection and copying.
+
+use std::collections::HashSet;
+use std::io::Write;
+use std::time::{Duration, Instant};
+
+use anyhow::Result;
+use base64::Engine;
+use ratatui::Frame;
+use ratatui::buffer::Buffer;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::Rect;
+use ratatui::style::{Modifier, Style};
+use unicode_width::UnicodeWidthChar;
+
+use super::doc::{self, Fold, Opts};
+use super::text::{Row, truncate, width};
+use super::theme;
+use crate::live::Live;
+use crate::model::{Block, Role, SessionMeta};
+use crate::tools;
+
+pub enum Action {
+    None,
+    Back,
+    Quit,
+}
+
+#[derive(Default)]
+struct Cached {
+    valid: bool,
+    rev: u64,
+    width: usize,
+    chat: bool,
+    ver: u64,
+    rows: Vec<Row>,
+}
+
+struct Search {
+    query: String,
+    /// Row, first column, end column.
+    hits: Vec<(usize, usize, usize)>,
+    cur: usize,
+}
+
+#[derive(Clone, Copy)]
+struct Sel {
+    anchor: (usize, u16),
+    head: (usize, u16),
+    moved: bool,
+}
+
+pub struct Viewer {
+    pub live: Live,
+    cache: Vec<Cached>,
+    /// Bumped when a fold inside the item changes.
+    ver: Vec<u64>,
+    /// First row of each item, plus the total at the end.
+    starts: Vec<usize>,
+    width: usize,
+    height: usize,
+    top: usize,
+    follow: bool,
+    chat: bool,
+    open: HashSet<Fold>,
+    focus: Option<Fold>,
+    sel: Option<Sel>,
+    search: Option<Search>,
+    typing: Option<String>,
+    help: bool,
+    msg: Option<(String, Instant)>,
+}
+
+impl Viewer {
+    pub fn open(meta: SessionMeta) -> Result<Viewer> {
+        Ok(Viewer {
+            live: Live::open(meta)?,
+            cache: Vec::new(),
+            ver: Vec::new(),
+            starts: vec![0],
+            width: 0,
+            height: 0,
+            top: 0,
+            follow: true,
+            chat: false,
+            open: HashSet::new(),
+            focus: None,
+            sel: None,
+            search: None,
+            typing: None,
+            help: false,
+            msg: None,
+        })
+    }
+
+    pub fn refresh(&mut self) {
+        if let Err(e) = self.live.refresh() {
+            self.say(format!("reload failed: {e}"));
+        }
+    }
+
+    fn say(&mut self, s: impl Into<String>) {
+        self.msg = Some((s.into(), Instant::now()));
+    }
+
+    fn total(&self) -> usize {
+        *self.starts.last().unwrap_or(&0)
+    }
+
+    fn max_top(&self) -> usize {
+        self.total().saturating_sub(self.height)
+    }
+
+    /// Index of the item that holds row `n`.
+    fn item_at(&self, n: usize) -> usize {
+        self.starts.partition_point(|&s| s <= n).saturating_sub(1).min(self.cache.len().saturating_sub(1))
+    }
+
+    fn row(&self, n: usize) -> Option<&Row> {
+        if n >= self.total() {
+            return None;
+        }
+        let i = self.item_at(n);
+        self.cache.get(i)?.rows.get(n - self.starts[i])
+    }
+
+    /// Lays out items that changed, keeping the top row's item in place.
+    fn layout(&mut self) {
+        let items = &self.live.t.items;
+        let anchor = (!self.cache.is_empty()).then(|| {
+            let i = self.item_at(self.top);
+            (i, self.top - self.starts[i])
+        });
+        self.cache.resize_with(items.len(), Cached::default);
+        self.ver.resize(items.len(), 0);
+        let opts = Opts { width: self.width, chat: self.chat, open: &self.open };
+        let mut changed = false;
+        let mut starts = Vec::with_capacity(items.len() + 1);
+        let mut total = 0;
+        for (i, it) in items.iter().enumerate() {
+            let c = &mut self.cache[i];
+            if !c.valid || c.rev != it.rev || c.width != opts.width || c.chat != opts.chat || c.ver != self.ver[i] {
+                *c = Cached {
+                    valid: true,
+                    rev: it.rev,
+                    width: opts.width,
+                    chat: opts.chat,
+                    ver: self.ver[i],
+                    rows: doc::layout(i, it, &opts),
+                };
+                changed = true;
+            }
+            starts.push(total);
+            total += c.rows.len();
+        }
+        starts.push(total);
+        self.starts = starts;
+        if !changed {
+            return;
+        }
+        if let Some((i, off)) = anchor {
+            let len = self.starts[i + 1] - self.starts[i];
+            self.top = self.starts[i] + off.min(len.saturating_sub(1));
+        }
+        if let Some(q) = self.search.as_ref().map(|s| s.query.clone()) {
+            let cur = self.search.as_ref().map_or(0, |s| s.cur);
+            self.find(q, false);
+            if let Some(s) = &mut self.search {
+                s.cur = cur.min(s.hits.len().saturating_sub(1));
+            }
+        }
+    }
+
+    fn scroll(&mut self, delta: isize) {
+        self.top = self.top.saturating_add_signed(delta).min(self.max_top());
+        self.follow = self.top >= self.max_top();
+    }
+
+    /// Scrolls so row `n` sits a third of the way down.
+    fn reveal(&mut self, n: usize) {
+        self.top = n.saturating_sub(self.height / 3).min(self.max_top());
+        self.follow = false;
+    }
+
+    fn fold_row(&self, fold: Fold) -> Option<usize> {
+        let i = fold.item();
+        let c = self.cache.get(i)?;
+        c.rows.iter().position(|r| r.fold == Some(fold)).map(|k| self.starts[i] + k)
+    }
+
+    fn toggle(&mut self, fold: Fold) {
+        if !self.open.remove(&fold) {
+            self.open.insert(fold);
+        }
+        if let Some(v) = self.ver.get_mut(fold.item()) {
+            *v += 1;
+        }
+    }
+
+    /// The item under the reading line, a third of the way down.
+    fn reading_item(&self) -> usize {
+        match self.focus {
+            Some(f) => f.item(),
+            None => self.item_at((self.top + self.height / 3).min(self.total().saturating_sub(1))),
+        }
+    }
+
+    // ---------- input ----------
+
+    pub fn key(&mut self, k: KeyEvent) -> Action {
+        if let Some(q) = &mut self.typing {
+            match k.code {
+                KeyCode::Esc => self.typing = None,
+                KeyCode::Enter => {
+                    let q = self.typing.take().unwrap_or_default();
+                    self.find(q, true);
+                }
+                KeyCode::Backspace => {
+                    q.pop();
+                }
+                KeyCode::Char(c) => q.push(c),
+                _ => {}
+            }
+            return Action::None;
+        }
+        if self.help {
+            self.help = false;
+            if matches!(k.code, KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q')) {
+                return Action::None;
+            }
+        }
+        self.sel = None;
+        let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+        let page = self.height.max(2) as isize;
+        match k.code {
+            KeyCode::Char('c') if ctrl => return Action::Quit,
+            KeyCode::Char('d') if ctrl => self.scroll(page / 2),
+            KeyCode::Char('u') if ctrl => self.scroll(-page / 2),
+            KeyCode::Char('f') if ctrl => self.scroll(page - 1),
+            KeyCode::Char('b') if ctrl => self.scroll(-(page - 1)),
+            KeyCode::Esc if self.search.is_some() => self.search = None,
+            KeyCode::Esc | KeyCode::Char('q') => return Action::Back,
+            KeyCode::Char('j') | KeyCode::Down => self.scroll(1),
+            KeyCode::Char('k') | KeyCode::Up => self.scroll(-1),
+            KeyCode::Char(' ') | KeyCode::PageDown => self.scroll(page - 1),
+            KeyCode::Char('b') | KeyCode::PageUp => self.scroll(-(page - 1)),
+            KeyCode::Char('g') | KeyCode::Home => {
+                self.top = 0;
+                self.follow = false;
+            }
+            KeyCode::Char('G') | KeyCode::End => self.follow = true,
+            KeyCode::Char(']') => self.prompt(true),
+            KeyCode::Char('[') => self.prompt(false),
+            KeyCode::Tab => self.step_focus(true),
+            KeyCode::BackTab => self.step_focus(false),
+            KeyCode::Enter => self.toggle_focus(),
+            KeyCode::Char('e') => self.toggle_all(),
+            KeyCode::Char('t') => {
+                self.chat = !self.chat;
+                self.focus = None;
+                self.say(if self.chat { "chat only: tool calls hidden" } else { "showing tool calls" });
+            }
+            KeyCode::Char('/') => self.typing = Some(String::new()),
+            KeyCode::Char('n') => self.step_hit(true),
+            KeyCode::Char('N') => self.step_hit(false),
+            KeyCode::Char('y') => self.copy_item(),
+            KeyCode::Char('?') => self.help = true,
+            _ => {}
+        }
+        Action::None
+    }
+
+    pub fn mouse(&mut self, m: MouseEvent) {
+        let y = m.row as usize;
+        let n = self.top + y.min(self.height.saturating_sub(1));
+        match m.kind {
+            MouseEventKind::ScrollDown => self.scroll(3),
+            MouseEventKind::ScrollUp => self.scroll(-3),
+            MouseEventKind::Down(MouseButton::Left) if y < self.height => {
+                self.sel = Some(Sel { anchor: (n, m.column), head: (n, m.column), moved: false });
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                if y == 0 {
+                    self.scroll(-1);
+                } else if y + 1 >= self.height {
+                    self.scroll(1);
+                }
+                let n = self.top + y.min(self.height.saturating_sub(1));
+                if let Some(s) = &mut self.sel {
+                    s.head = (n, m.column);
+                    s.moved = true;
+                }
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                let Some(s) = self.sel.take() else { return };
+                if s.moved {
+                    let text = self.selected(&s);
+                    self.copy(&text);
+                    self.sel = Some(s);
+                } else if let Some(fold) = self.row(s.anchor.0).and_then(|r| r.fold) {
+                    self.focus = Some(fold);
+                    self.toggle(fold);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Jumps to the next or previous prompt.
+    fn prompt(&mut self, forward: bool) {
+        let items = &self.live.t.items;
+        let prompts: Vec<usize> = (0..items.len())
+            .filter(|&i| items[i].role == Role::User && self.starts[i + 1] > self.starts[i])
+            .map(|i| self.starts[i])
+            .collect();
+        let target = if forward { prompts.iter().find(|&&s| s > self.top) } else { prompts.iter().rev().find(|&&s| s < self.top) };
+        match target.copied() {
+            Some(s) => {
+                self.top = s.min(self.max_top());
+                self.follow = self.top >= self.max_top();
+            }
+            None if forward => self.follow = true,
+            None => self.top = 0,
+        }
+    }
+
+    fn step_focus(&mut self, forward: bool) {
+        let from = self.focus.and_then(|f| self.fold_row(f));
+        let total = self.total();
+        let found = if forward {
+            let start = from.map_or(self.top, |r| r + 1);
+            (start..total).find(|&n| self.row(n).is_some_and(|r| r.fold.is_some()))
+        } else {
+            let end = from.unwrap_or(self.top + self.height);
+            (0..end.min(total)).rev().find(|&n| self.row(n).is_some_and(|r| r.fold.is_some()))
+        };
+        if let Some(n) = found {
+            self.focus = self.row(n).and_then(|r| r.fold);
+            if n < self.top || n >= self.top + self.height {
+                self.reveal(n);
+            }
+        }
+    }
+
+    fn toggle_focus(&mut self) {
+        let visible = self.focus.and_then(|f| self.fold_row(f)).is_some_and(|n| n >= self.top && n < self.top + self.height);
+        if !visible {
+            self.focus = None;
+            self.step_focus(true);
+        }
+        if let Some(f) = self.focus {
+            self.toggle(f);
+        }
+    }
+
+    /// Opens every tool group, thinking block and notice, or closes all folds.
+    fn toggle_all(&mut self) {
+        if self.open.is_empty() {
+            for (i, it) in self.live.t.items.iter().enumerate() {
+                let mut prev_tool = false;
+                for (b, block) in it.blocks.iter().enumerate() {
+                    match block {
+                        Block::Tool(_) if !prev_tool => {
+                            self.open.insert(Fold::Group(i, b));
+                        }
+                        Block::Thinking(_) => {
+                            self.open.insert(Fold::Thinking(i, b));
+                        }
+                        Block::Notice(_) if it.role == Role::Event => {
+                            self.open.insert(Fold::Notice(i));
+                        }
+                        _ => {}
+                    }
+                    prev_tool = matches!(block, Block::Tool(_));
+                }
+            }
+            self.say("expanded all");
+        } else {
+            self.open.clear();
+            self.say("collapsed all");
+        }
+        self.ver.iter_mut().for_each(|v| *v += 1);
+    }
+
+    fn find(&mut self, query: String, jump: bool) {
+        if query.is_empty() {
+            self.search = None;
+            return;
+        }
+        let q: Vec<char> = query.chars().map(lower).collect();
+        let mut hits = Vec::new();
+        for n in 0..self.total() {
+            let Some(row) = self.row(n) else { break };
+            let text: Vec<char> = row.text().chars().collect();
+            let low: Vec<char> = text.iter().map(|&c| lower(c)).collect();
+            let mut i = 0;
+            while i + q.len() <= low.len() {
+                if low[i..i + q.len()] == q[..] {
+                    let a: usize = text[..i].iter().map(|c| c.width().unwrap_or(0)).sum();
+                    let b = a + text[i..i + q.len()].iter().map(|c| c.width().unwrap_or(0)).sum::<usize>();
+                    hits.push((n, a, b));
+                    i += q.len();
+                } else {
+                    i += 1;
+                }
+            }
+        }
+        let cur = hits.iter().position(|h| h.0 >= self.top).unwrap_or(0);
+        let count = hits.len();
+        self.search = Some(Search { query, hits, cur });
+        if jump {
+            if count == 0 {
+                self.say("no matches (folded content is not searched)");
+            } else {
+                self.step_hit_to(cur);
+            }
+        }
+    }
+
+    fn step_hit(&mut self, forward: bool) {
+        let Some(s) = &self.search else { return };
+        let n = s.hits.len();
+        if n == 0 {
+            return;
+        }
+        let k = if forward { (s.cur + 1) % n } else { (s.cur + n - 1) % n };
+        self.step_hit_to(k);
+    }
+
+    fn step_hit_to(&mut self, k: usize) {
+        let Some(s) = &mut self.search else { return };
+        s.cur = k;
+        let (row, n) = (s.hits[k].0, s.hits.len());
+        self.reveal(row);
+        self.say(format!("match {}/{n}", k + 1));
+    }
+
+    fn selected(&self, s: &Sel) -> String {
+        let (a, b) = if (s.anchor.0, s.anchor.1) <= (s.head.0, s.head.1) { (s.anchor, s.head) } else { (s.head, s.anchor) };
+        let mut out = String::new();
+        for n in a.0..=b.0 {
+            let Some(row) = self.row(n) else { break };
+            let from = if n == a.0 { a.1 as usize } else { 0 }.max(row.pad as usize);
+            let to = if n == b.0 { b.1 as usize + 1 } else { usize::MAX };
+            if n > a.0 {
+                out.push_str(row.join.unwrap_or("\n"));
+            }
+            out.push_str(cols(&row.text(), from, to).trim_end());
+        }
+        out
+    }
+
+    fn copy_item(&mut self) {
+        let text = match self.focus {
+            Some(Fold::Tool(i, b)) => match self.live.t.items.get(i).and_then(|it| it.blocks.get(b)) {
+                Some(Block::Tool(t)) => {
+                    tools::sections(t).iter().map(|s| format!("{}\n{}", s.title, s.body)).collect::<Vec<_>>().join("\n\n")
+                }
+                _ => String::new(),
+            },
+            _ => match self.live.t.items.get(self.reading_item()) {
+                Some(it) => it.text(),
+                None => String::new(),
+            },
+        };
+        if text.is_empty() {
+            self.say("nothing to copy here");
+        } else {
+            self.copy(&text);
+        }
+    }
+
+    /// Sets the clipboard with OSC 52, which also works over SSH.
+    fn copy(&mut self, text: &str) {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(text);
+        let mut out = std::io::stdout();
+        let _ = write!(out, "\x1b]52;c;{b64}\x07").and_then(|_| out.flush());
+        self.say(format!("copied {} characters", text.chars().count()));
+    }
+
+    // ---------- drawing ----------
+
+    pub fn draw(&mut self, f: &mut Frame) {
+        let area = f.area();
+        self.width = area.width as usize;
+        self.height = area.height.saturating_sub(1) as usize;
+        self.layout();
+        self.top = if self.follow { self.max_top() } else { self.top.min(self.max_top()) };
+        let focus = self.focus.and_then(|fo| self.fold_row(fo));
+        let sel = self.sel.map(|s| if (s.anchor.0, s.anchor.1) <= (s.head.0, s.head.1) { (s.anchor, s.head) } else { (s.head, s.anchor) });
+        let buf = f.buffer_mut();
+        for y in 0..self.height {
+            let n = self.top + y;
+            let Some(row) = self.row(n) else { break };
+            let line = Rect::new(area.x, area.y + y as u16, area.width, 1);
+            if let Some((col, st)) = row.fill
+                && col < area.width
+            {
+                buf.set_style(Rect::new(area.x + col, line.y, area.width - col, 1), st);
+            }
+            let mut x = area.x;
+            for s in &row.spans {
+                if x >= area.right() {
+                    break;
+                }
+                x = buf.set_stringn(x, line.y, &s.content, (area.right() - x) as usize, s.style).0;
+            }
+            if focus == Some(n) {
+                buf.set_style(line, theme::FOCUS);
+            }
+            if let Some(s) = &self.search {
+                let from = s.hits.partition_point(|h| h.0 < n);
+                for (k, h) in s.hits.iter().enumerate().skip(from).take_while(|(_, h)| h.0 == n) {
+                    let style = if k == s.cur { theme::MATCH_ON } else { theme::MATCH };
+                    highlight(buf, line, h.1, h.2, style);
+                }
+            }
+            if let Some((a, b)) = sel
+                && n >= a.0
+                && n <= b.0
+            {
+                let c0 = if n == a.0 { a.1 as usize } else { 0 };
+                let c1 = if n == b.0 { b.1 as usize + 1 } else { self.width };
+                highlight(buf, line, c0, c1, Style::new().add_modifier(Modifier::REVERSED));
+            }
+        }
+        self.draw_bar(buf, area);
+        if self.help {
+            draw_help(buf, area);
+        }
+    }
+
+    fn draw_bar(&mut self, buf: &mut Buffer, area: Rect) {
+        let y = area.bottom().saturating_sub(1);
+        let bar = Rect::new(area.x, y, area.width, 1);
+        buf.set_style(bar, theme::BAR);
+        if let Some(q) = &self.typing {
+            buf.set_stringn(area.x, y, format!(" /{q}▏  enter search · esc cancel"), area.width as usize, theme::BAR);
+            return;
+        }
+        let total = self.total();
+        let pos = match ((self.top + self.height).min(total) * 100).checked_div(total) {
+            Some(p) => format!("{p}%"),
+            None => "empty".to_string(),
+        };
+        let live = jiff::Timestamp::now().as_millisecond() - self.live.meta.modified < 120_000;
+        let mut right = format!(" {pos} · {}", if self.chat { "chat only" } else { "all" });
+        if live {
+            right.push_str(" · live");
+        }
+        if self.follow {
+            right.push_str(" · following");
+        }
+        right.push_str(" · ? keys ");
+        let room = (area.width as usize).saturating_sub(width(&right) + 1);
+        if let Some((m, at)) = &self.msg {
+            if at.elapsed() < Duration::from_secs(3) {
+                buf.set_stringn(area.x, y, format!(" {}", truncate(m, room)), room, theme::BAR_KEY);
+                buf.set_stringn(area.x + room as u16 + 1, y, &right, width(&right), theme::BAR);
+                return;
+            }
+            self.msg = None;
+        }
+        let m = &self.live.meta;
+        let agent = format!(" {} ", m.agent.name());
+        let x = buf.set_stringn(area.x, y, &agent, room, theme::BAR.patch(theme::agent(m.agent.name()))).0;
+        let used = (x - area.x) as usize;
+        buf.set_stringn(x, y, format!("· {}", truncate(&m.title, room.saturating_sub(used + 2))), room.saturating_sub(used), theme::BAR);
+        buf.set_stringn(area.x + room as u16 + 1, y, &right, width(&right), theme::BAR);
+    }
+}
+
+fn lower(c: char) -> char {
+    c.to_lowercase().next().unwrap_or(c)
+}
+
+/// The part of `s` between display columns `from` and `to`.
+fn cols(s: &str, from: usize, to: usize) -> &str {
+    let (mut a, mut b, mut w) = (s.len(), s.len(), 0);
+    for (i, c) in s.char_indices() {
+        if w >= from && a == s.len() {
+            a = i;
+        }
+        if w >= to {
+            b = i;
+            break;
+        }
+        w += c.width().unwrap_or(0);
+    }
+    if a > b { "" } else { &s[a..b] }
+}
+
+fn highlight(buf: &mut Buffer, line: Rect, from: usize, to: usize, style: Style) {
+    let from = (from as u16).min(line.width);
+    let to = (to.min(line.width as usize) as u16).max(from);
+    buf.set_style(Rect::new(line.x + from, line.y, to - from, 1), style);
+}
+
+const HELP: &[(&str, &str)] = &[
+    ("j k  ↑ ↓", "scroll a line"),
+    ("space b  PgDn PgUp", "scroll a page"),
+    ("ctrl-d ctrl-u", "half a page"),
+    ("g G", "top, bottom (and follow)"),
+    ("[ ]", "previous, next prompt"),
+    ("t", "chat only: hide tool calls"),
+    ("tab shift-tab", "move between folds"),
+    ("enter  click", "open or close a fold"),
+    ("e", "expand or collapse all"),
+    ("/  n N", "search, next and previous match"),
+    ("y", "copy the message (or focused tool)"),
+    ("drag", "select text and copy it"),
+    ("q esc", "back to the list"),
+];
+
+fn draw_help(buf: &mut Buffer, area: Rect) {
+    let w = 64.min(area.width);
+    let h = (HELP.len() as u16 + 4).min(area.height);
+    let r = Rect::new(area.x + (area.width - w) / 2, area.y + (area.height.saturating_sub(h)) / 2, w, h);
+    buf.set_style(r, theme::BAR);
+    for y in r.y..r.bottom() {
+        buf.set_stringn(r.x, y, " ".repeat(w as usize), w as usize, theme::BAR);
+    }
+    buf.set_stringn(r.x + 2, r.y + 1, "keys", w as usize - 4, theme::BAR_KEY);
+    for (k, (keys, what)) in HELP.iter().enumerate() {
+        let y = r.y + 2 + k as u16;
+        if y + 1 >= r.bottom() {
+            break;
+        }
+        buf.set_stringn(r.x + 2, y, keys, 22, theme::BAR_KEY);
+        buf.set_stringn(r.x + 24, y, what, w.saturating_sub(26) as usize, theme::BAR);
+    }
+}

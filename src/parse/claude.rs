@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 
-use super::{fence, one_line, output, strip_ansi, tag, take_str, tokens, ts, Parser};
+use super::{Parser, fence, one_line, output, strip_ansi, tag, take_str, tokens, ts};
 use crate::model::{Block, Image, NoticeKind, Role, Transcript};
 
 #[derive(Default)]
@@ -149,10 +149,10 @@ impl Claude {
                 out.push_str(err);
             }
             let out = strip_ansi(out.trim());
-            if !out.is_empty() {
-                if let Some(n) = self.shell.and_then(|i| t.notice_mut(i)) {
-                    n.body = fence(&out, "");
-                }
+            if !out.is_empty()
+                && let Some(n) = self.shell.and_then(|i| t.notice_mut(i))
+            {
+                n.body = fence(&out, "");
             }
             return true;
         }

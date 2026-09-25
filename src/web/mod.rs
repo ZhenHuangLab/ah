@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use axum::extract::{Path, Query, State};
-use axum::http::{header, StatusCode};
+use axum::http::{StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
@@ -26,7 +26,7 @@ use serde_json::json;
 use tokio::sync::broadcast::{self, error::RecvError};
 use tower_http::compression::CompressionLayer;
 
-use crate::discover::{self, mtime_ms, Roots};
+use crate::discover::{self, Roots, mtime_ms};
 use crate::live::Live;
 use crate::model::{Block, SessionMeta};
 
@@ -241,7 +241,7 @@ fn watch(st: Shared) -> Result<()> {
 
 async fn sessions(State(st): State<Shared>) -> Json<serde_json::Value> {
     let mut list: Vec<SessionMeta> = st.index.read().unwrap().by_id.values().cloned().collect();
-    list.sort_by(|a, b| b.modified.cmp(&a.modified));
+    list.sort_by_key(|m| std::cmp::Reverse(m.modified));
     let home = std::env::var("HOME").unwrap_or_default();
     Json(json!({ "home": home, "sessions": list }))
 }
@@ -354,7 +354,11 @@ struct ImageQuery {
     k: Option<usize>,
 }
 
-async fn image(State(st): State<Shared>, Path((id, i, b)): Path<(String, usize, usize)>, Query(q): Query<ImageQuery>) -> Result<Response, StatusCode> {
+async fn image(
+    State(st): State<Shared>,
+    Path((id, i, b)): Path<(String, usize, usize)>,
+    Query(q): Query<ImageQuery>,
+) -> Result<Response, StatusCode> {
     blocking(move || {
         let live = st.live(&id)?;
         let l = live.lock().unwrap();
