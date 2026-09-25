@@ -83,6 +83,13 @@ impl Item {
         out
     }
 
+    /// The end of the run of tool calls and thinking that starts at block `b`, when the run
+    /// contains a tool call. Such runs fold into a single summary line.
+    pub fn run_end(&self, b: usize) -> Option<usize> {
+        let run = self.blocks.get(b..)?.iter().take_while(|x| matches!(x, Block::Tool(_) | Block::Thinking(_))).count();
+        self.blocks[b..b + run].iter().any(|x| matches!(x, Block::Tool(_))).then_some(b + run)
+    }
+
     /// The last non-empty text block, which for an agent turn is usually its answer.
     pub fn last_text(&self) -> Option<&str> {
         self.blocks.iter().rev().find_map(|b| match b {
@@ -164,6 +171,12 @@ impl NoticeKind {
     }
 }
 
+fn strip(s: &mut String) {
+    if s.contains('\x1b') {
+        *s = crate::parse::strip_ansi(s);
+    }
+}
+
 /// Session facts the parsers pick up while reading.
 #[derive(Default)]
 pub struct Info {
@@ -210,7 +223,16 @@ impl Transcript {
         self.add_block(idx, block);
     }
 
-    fn add_block(&mut self, idx: usize, block: Block) {
+    fn add_block(&mut self, idx: usize, mut block: Block) {
+        // Some agents store colored text; escapes would show up as garbage in both views.
+        match &mut block {
+            Block::Text(s) | Block::Thinking(s) => strip(s),
+            Block::Notice(n) => {
+                strip(&mut n.label);
+                strip(&mut n.body);
+            }
+            _ => {}
+        }
         let item = &mut self.items[idx];
         item.blocks.push(block);
         item.rev = self.rev;

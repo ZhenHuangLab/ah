@@ -353,25 +353,24 @@ impl Viewer {
         }
     }
 
-    /// Opens every tool group, thinking block and notice, or closes all folds.
+    /// Opens every group of tool calls and every thinking block, or closes all folds.
     fn toggle_all(&mut self) {
         if self.open.is_empty() {
             for (i, it) in self.live.t.items.iter().enumerate() {
-                let mut prev_tool = false;
-                for (b, block) in it.blocks.iter().enumerate() {
-                    match block {
-                        Block::Tool(_) if !prev_tool => {
+                let mut b = 0;
+                while b < it.blocks.len() {
+                    match it.run_end(b) {
+                        Some(end) => {
                             self.open.insert(Fold::Group(i, b));
+                            b = end;
+                            continue;
                         }
-                        Block::Thinking(_) => {
+                        None if matches!(it.blocks[b], Block::Thinking(_)) => {
                             self.open.insert(Fold::Thinking(i, b));
                         }
-                        Block::Notice(_) if it.role == Role::Event => {
-                            self.open.insert(Fold::Notice(i));
-                        }
-                        _ => {}
+                        None => {}
                     }
-                    prev_tool = matches!(block, Block::Tool(_));
+                    b += 1;
                 }
             }
             self.say("expanded all");

@@ -119,31 +119,16 @@ fn assistant(i: usize, item: &Item, o: &Opts) -> Vec<Row> {
                     add.push(r.indent(prefix, true));
                 }
             }
-            Block::Thinking(s) if !o.chat => {
-                let fold = Fold::Thinking(i, b);
-                let open = o.open.contains(&fold);
-                add.push(fold_row(fold, open, 0, "✻ Thinking".into(), theme::THINKING));
-                if open {
-                    for r in md::render(s, w.saturating_sub(2), theme::THINKING) {
-                        add.push(r.indent(Span::raw("    "), true));
+            Block::Tool(_) | Block::Thinking(_) => match item.run_end(b) {
+                Some(end) => {
+                    if !o.chat {
+                        group(i, b, &blocks[b..end], o, &mut add);
                     }
+                    b = end - 1;
                 }
-            }
-            Block::Tool(_) => {
-                let start = b;
-                while b + 1 < blocks.len() && matches!(blocks[b + 1], Block::Tool(_)) {
-                    b += 1;
-                }
-                if !o.chat {
-                    let list: Vec<(usize, &Tool)> = (start..=b)
-                        .filter_map(|k| match &blocks[k] {
-                            Block::Tool(t) => Some((k, t)),
-                            _ => None,
-                        })
-                        .collect();
-                    group(i, start, &list, o, &mut add);
-                }
-            }
+                None if !o.chat => thinking(Fold::Thinking(i, b), &blocks[b], 0, o, &mut add),
+                None => {}
+            },
             Block::Image(img) => {
                 add.push(Row::new(vec![Span::raw("  "), Span::styled(format!("▣ image ({})", img.mime), theme::MUTED)]));
             }
@@ -161,18 +146,36 @@ fn assistant(i: usize, item: &Item, o: &Opts) -> Vec<Row> {
     rows
 }
 
-fn group(i: usize, start: usize, list: &[(usize, &Tool)], o: &Opts, rows: &mut Vec<Row>) {
+fn thinking(fold: Fold, block: &Block, indent: usize, o: &Opts, rows: &mut Vec<Row>) {
+    let Block::Thinking(s) = block else { return };
+    let open = o.open.contains(&fold);
+    rows.push(fold_row(fold, open, indent, "✻ Thinking".into(), theme::THINKING));
+    if open {
+        let pad = " ".repeat(indent + 4);
+        for r in md::render(s, o.width.saturating_sub(indent + 6), theme::THINKING) {
+            rows.push(r.indent(Span::raw(pad.clone()), true));
+        }
+    }
+}
+
+/// A run of tool calls and thinking as one summary line, listing each when open.
+fn group(i: usize, start: usize, run: &[Block], o: &Opts, rows: &mut Vec<Row>) {
     let fold = Fold::Group(i, start);
     let open = o.open.contains(&fold);
-    let mut head = fold_row(fold, open, 0, tools::group_summary(list.iter().map(|(_, t)| *t)), theme::TOOLS);
-    if list.iter().any(|(_, t)| tools::pending(t)) {
+    let mut head = fold_row(fold, open, 0, tools::group_summary(run), theme::TOOLS);
+    if run.iter().any(|b| matches!(b, Block::Tool(t) if tools::pending(t))) {
         head.spans.push(Span::styled(" …", theme::RUN));
     }
     rows.push(head);
     if !open {
         return;
     }
-    for &(b, t) in list {
+    for (k, block) in run.iter().enumerate() {
+        let b = start + k;
+        let Block::Tool(t) = block else {
+            thinking(Fold::Thinking(i, b), block, 2, o, rows);
+            continue;
+        };
         let fold = Fold::Tool(i, b);
         let open = o.open.contains(&fold);
         let status = if tools::pending(t) {

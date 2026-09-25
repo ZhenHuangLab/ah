@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
 
-use crate::model::Tool;
+use crate::model::{Block, Tool};
 use crate::parse::one_line;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -44,12 +44,20 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
-/// "Ran 3 commands, read 2 files, edited 1 file".
-pub fn group_summary<'a>(tools: impl IntoIterator<Item = &'a Tool>) -> String {
+/// "Ran 3 commands, read 2 files, edited 1 file, thought twice" for a run of blocks.
+pub fn group_summary(blocks: &[Block]) -> String {
     let mut counts: BTreeMap<Kind, usize> = BTreeMap::new();
     let mut others: Vec<&str> = Vec::new();
-    let mut failed = 0;
-    for t in tools {
+    let (mut failed, mut thoughts) = (0, 0);
+    for b in blocks {
+        let t = match b {
+            Block::Tool(t) => t,
+            Block::Thinking(_) => {
+                thoughts += 1;
+                continue;
+            }
+            _ => continue,
+        };
         let k = kind(&t.name);
         *counts.entry(k).or_default() += 1;
         if k == Kind::Other && !others.contains(&t.name.as_str()) {
@@ -76,6 +84,12 @@ pub fn group_summary<'a>(tools: impl IntoIterator<Item = &'a Tool>) -> String {
         .collect();
     if failed > 0 {
         parts.push(format!("{failed} failed"));
+    }
+    match thoughts {
+        0 => {}
+        1 => parts.push("thought once".into()),
+        2 => parts.push("thought twice".into()),
+        n => parts.push(format!("thought {n} times")),
     }
     let mut s = parts.join(", ");
     if let Some(first) = s.get(..1) {

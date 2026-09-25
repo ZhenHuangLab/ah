@@ -224,6 +224,8 @@ function put(it) {
   const c = S.cur;
   c.items[it.i] = it;
   let el = c.els[it.i];
+  // Folds the reader opened stay open when the item is re-rendered, including ones inside
+  // content that loads later.
   const keep = el ? new Set($$('details[open]', el).map(d => d.dataset.k)) : null;
   if (!el) {
     el = document.createElement('article');
@@ -241,7 +243,8 @@ function put(it) {
     acts = `<div class="acts">${t}<button class="copy">Copy</button></div>`;
   }
   el.innerHTML = it.html + acts;
-  if (keep) for (const d of $$('details[data-k]', el)) if (keep.has(d.dataset.k)) d.open = true;
+  el.keep = keep;
+  if (keep) reopen(el, keep);
   seen.observe(el);
 }
 
@@ -300,14 +303,21 @@ function clamp(p) {
   p.after(b);
 }
 
-async function loadTool(d) {
+function reopen(el, keep) {
+  for (const d of $$('details[data-k]', el)) if (keep.has(d.dataset.k)) d.open = true;
+}
+
+/** Fetches the content of a fold (tool rows and details, thinking, notice body) when it is opened. */
+async function loadBody(d) {
   d.dataset.loaded = '1';
-  const body = $('.tool-body', d);
+  const body = $(':scope > .body', d);
   body.innerHTML = '<div class="sec-t">loading…</div>';
   try {
     const r = await fetch(d.dataset.src);
     if (!r.ok) throw new Error(r.status);
     body.innerHTML = await r.text();
+    const item = d.closest('.item');
+    if (item && item.keep) reopen(body, item.keep);
     enhance(body);
   } catch (_) {
     body.innerHTML = '<div class="sec-t">could not load</div>';
@@ -498,7 +508,7 @@ function wire() {
   // `toggle` does not bubble; listen in the capture phase.
   document.addEventListener('toggle', e => {
     const d = e.target;
-    if (d.classList && d.classList.contains('tool') && d.open && !d.dataset.loaded) loadTool(d);
+    if (d.dataset && d.dataset.src && d.open && !d.dataset.loaded) loadBody(d);
   }, true);
 
   document.addEventListener('keydown', e => {

@@ -60,20 +60,15 @@ fn item(sid: &str, i: usize, it: &Item) -> ItemJson {
                 html.push_str(&to_html(s));
                 html.push_str("</div>");
             }
-            Block::Thinking(s) => {
-                html.push_str(&format!("<details class=\"thinking\" data-k=\"h{b}\"><summary>Thinking</summary><div class=\"md\">"));
-                html.push_str(&to_html(s));
-                html.push_str("</div></details>");
-            }
-            Block::Tool(_) => {
-                let start = b;
-                while b + 1 < it.blocks.len() && matches!(it.blocks[b + 1], Block::Tool(_)) {
-                    b += 1;
+            Block::Tool(_) | Block::Thinking(_) => match it.run_end(b) {
+                Some(end) => {
+                    html.push_str(&group(sid, i, b, &it.blocks[b..end]));
+                    b = end - 1;
                 }
-                html.push_str(&group(sid, i, start, &it.blocks[start..=b]));
-            }
+                None => html.push_str(&thinking(sid, i, b)),
+            },
             Block::Image(_) => html.push_str(&img(sid, i, b, None)),
-            Block::Notice(n) => html.push_str(&notice(n)),
+            Block::Notice(n) => html.push_str(&notice(n, &src(sid, i, b))),
         }
         b += 1;
     }
@@ -93,21 +88,32 @@ fn item(sid: &str, i: usize, it: &Item) -> ItemJson {
     ItemJson { i, role: it.role, time: it.time, html, md, preview, kind }
 }
 
-fn group(sid: &str, i: usize, start: usize, blocks: &[Block]) -> String {
-    let list: Vec<&Tool> = blocks
-        .iter()
-        .filter_map(|b| match b {
-            Block::Tool(t) => Some(t),
-            _ => None,
-        })
-        .collect();
-    let running = if list.iter().any(|t| tools::pending(t)) { " running" } else { "" };
-    let mut s = format!(
-        "<details class=\"tools{running}\" data-k=\"g{start}\"><summary>{}</summary><div class=\"tool-list\">",
-        escape(&tools::group_summary(list.iter().copied()))
-    );
-    for (k, t) in list.iter().enumerate() {
-        let b = start + k;
+fn thinking(sid: &str, i: usize, b: usize) -> String {
+    format!(
+        "<details class=\"thinking\" data-k=\"h{b}\" data-src=\"{}\"><summary>Thinking</summary><div class=\"body md\"></div></details>",
+        src(sid, i, b)
+    )
+}
+
+/// A run of tool calls and thinking as one summary line; its rows load when it is opened.
+fn group(sid: &str, i: usize, start: usize, run: &[Block]) -> String {
+    let running = if run.iter().any(|b| matches!(b, Block::Tool(t) if tools::pending(t))) { " running" } else { "" };
+    format!(
+        "<details class=\"tools{running}\" data-k=\"g{start}\" data-src=\"api/s/{sid}/run/{i}/{start}\"><summary>{}</summary><div class=\"body tool-list\"></div></details>",
+        escape(&tools::group_summary(run))
+    )
+}
+
+/// One row per tool call or thinking block in the run starting at block `start`.
+pub fn run_rows(sid: &str, i: usize, start: usize, it: &Item) -> Option<String> {
+    let end = it.run_end(start)?;
+    let sid = escape(sid);
+    let mut s = String::new();
+    for (b, block) in it.blocks.iter().enumerate().take(end).skip(start) {
+        let Block::Tool(t) = block else {
+            s.push_str(&thinking(&sid, i, b));
+            continue;
+        };
         let status = if tools::pending(t) {
             "run"
         } else if tools::failed(t) {
@@ -116,25 +122,39 @@ fn group(sid: &str, i: usize, start: usize, blocks: &[Block]) -> String {
             "ok"
         };
         s.push_str(&format!(
-            "<details class=\"tool {status}\" data-k=\"t{b}\" data-src=\"api/s/{sid}/tool/{i}/{b}\"><summary><b>{}</b><code>{}</code></summary><div class=\"tool-body\"></div></details>",
+            "<details class=\"tool {status}\" data-k=\"t{b}\" data-src=\"{}\"><summary><b>{}</b><code>{}</code></summary><div class=\"body tool-body\"></div></details>",
+            src(&sid, i, b),
             escape(&t.name),
             escape(&tools::arg(t))
         ));
     }
-    s.push_str("</div></details>");
-    s
+    Some(s)
 }
 
-fn notice(n: &Notice) -> String {
+/// Where the expanded content of a block is fetched from.
+fn src(sid: &str, i: usize, b: usize) -> String {
+    format!("api/s/{sid}/block/{i}/{b}")
+}
+
+fn notice(n: &Notice, src: &str) -> String {
     let kind = n.kind.name();
     let label = escape(&n.label);
     if n.body.trim().is_empty() {
         format!("<div class=\"notice {kind}\"><span>{label}</span></div>")
     } else {
         format!(
-            "<details class=\"notice {kind}\" data-k=\"n\"><summary>{label}</summary><div class=\"md\">{}</div></details>",
-            to_html(&n.body)
+            "<details class=\"notice {kind}\" data-k=\"n\" data-src=\"{src}\"><summary>{label}</summary><div class=\"body md\"></div></details>"
         )
+    }
+}
+
+/// The expanded content of a foldable block: tool details, thinking or a notice body.
+pub fn block(sid: &str, i: usize, b: usize, block: &Block) -> Option<String> {
+    match block {
+        Block::Tool(t) => Some(tool_detail(sid, i, b, t)),
+        Block::Thinking(s) => Some(to_html(s)),
+        Block::Notice(n) => Some(to_html(&n.body)),
+        _ => None,
     }
 }
 
@@ -144,7 +164,7 @@ fn img(sid: &str, i: usize, b: usize, k: Option<usize>) -> String {
 }
 
 /// The expanded view of one tool call.
-pub fn tool_detail(sid: &str, i: usize, b: usize, t: &Tool) -> String {
+fn tool_detail(sid: &str, i: usize, b: usize, t: &Tool) -> String {
     let sid = escape(sid);
     let mut s = String::new();
     for sec in tools::sections(t) {

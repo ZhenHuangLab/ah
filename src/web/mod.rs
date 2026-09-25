@@ -28,7 +28,7 @@ use tower_http::compression::CompressionLayer;
 
 use crate::discover::{self, Roots, mtime_ms};
 use crate::live::Live;
-use crate::model::{Block, SessionMeta};
+use crate::model::SessionMeta;
 
 #[derive(rust_embed::Embed)]
 #[folder = "assets/"]
@@ -107,7 +107,8 @@ async fn run(addrs: Vec<SocketAddr>) -> Result<()> {
         .route("/api/events", get(events))
         .route("/api/s/{id}", get(session))
         .route("/api/s/{id}/events", get(session_events))
-        .route("/api/s/{id}/tool/{item}/{block}", get(tool))
+        .route("/api/s/{id}/block/{item}/{block}", get(block))
+        .route("/api/s/{id}/run/{item}/{block}", get(run_rows))
         .route("/api/s/{id}/img/{item}/{block}", get(image))
         .layer(CompressionLayer::new())
         .with_state(st);
@@ -337,14 +338,22 @@ async fn session_events(State(st): State<Shared>, Path(id): Path<String>, Query(
     Ok(sse(s))
 }
 
-async fn tool(State(st): State<Shared>, Path((id, i, b)): Path<(String, usize, usize)>) -> Result<Html<String>, StatusCode> {
+async fn block(State(st): State<Shared>, Path((id, i, b)): Path<(String, usize, usize)>) -> Result<Html<String>, StatusCode> {
     blocking(move || {
         let live = st.live(&id)?;
         let l = live.lock().unwrap();
-        match l.t.items.get(i).and_then(|it| it.blocks.get(b)) {
-            Some(Block::Tool(t)) => Ok(Html(render::tool_detail(&id, i, b, t))),
-            _ => Err(StatusCode::NOT_FOUND),
-        }
+        let block = l.t.items.get(i).and_then(|it| it.blocks.get(b)).ok_or(StatusCode::NOT_FOUND)?;
+        render::block(&id, i, b, block).map(Html).ok_or(StatusCode::NOT_FOUND)
+    })
+    .await
+}
+
+async fn run_rows(State(st): State<Shared>, Path((id, i, b)): Path<(String, usize, usize)>) -> Result<Html<String>, StatusCode> {
+    blocking(move || {
+        let live = st.live(&id)?;
+        let l = live.lock().unwrap();
+        let it = l.t.items.get(i).ok_or(StatusCode::NOT_FOUND)?;
+        render::run_rows(&id, i, b, it).map(Html).ok_or(StatusCode::NOT_FOUND)
     })
     .await
 }
