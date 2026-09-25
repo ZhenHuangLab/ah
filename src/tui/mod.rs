@@ -3,6 +3,7 @@
 mod doc;
 mod md;
 mod picker;
+mod tex;
 mod text;
 mod theme;
 mod view;

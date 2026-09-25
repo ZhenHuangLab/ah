@@ -5,6 +5,7 @@ use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Tag, TagEnd}
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Span;
 
+use super::tex;
 use super::text::{Row, Styled, spans_width, width};
 use super::theme;
 use crate::markdown;
@@ -187,13 +188,18 @@ impl R {
             Event::End(tag) => self.end(tag),
             Event::Text(t) => self.text(&t, self.style()),
             Event::Code(t) => self.text(&t, self.style().patch(theme::CODE)),
-            Event::InlineMath(t) => self.text(&t, self.style().patch(theme::MATH)),
+            Event::InlineMath(t) => self.text(&tex::unicode(&t), self.style().patch(theme::MATH)),
             Event::DisplayMath(t) => {
                 self.flush();
                 let (first, rest) = self.prefixes();
-                let avail = self.width.saturating_sub(spans_width(&first) + 4);
-                let body: Vec<Row> =
-                    Styled::plain(t.trim(), theme::MATH).rows(avail).into_iter().map(|r| r.indent(Span::raw("    "), false)).collect();
+                let avail = self.width.saturating_sub(spans_width(&first) + 2);
+                let math = tex::unicode(&t);
+                let lines: Vec<&str> = math.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+                let body: Vec<Row> = Styled::plain(&lines.join("\n"), theme::MATH)
+                    .rows(avail)
+                    .into_iter()
+                    .map(|r| r.indent(Span::raw("  "), false))
+                    .collect();
                 self.emit(body, first, rest);
             }
             Event::Html(t) | Event::InlineHtml(t) => self.text(&t, self.style().patch(theme::MUTED)),
