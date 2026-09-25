@@ -14,8 +14,13 @@ pub fn options() -> Options {
         | Options::ENABLE_GFM
 }
 
-pub fn parser(src: &str) -> Parser<'_> {
-    Parser::new_ext(src, options())
+/// Markdown events. Like pandoc, a closing `$` followed by a digit does not end inline math,
+/// so "$5-$10" stays text.
+pub fn events(src: &str) -> impl Iterator<Item = Event<'_>> {
+    Parser::new_ext(src, options()).into_offset_iter().map(|(e, range)| match e {
+        Event::InlineMath(m) if src[range.end..].starts_with(|c: char| c.is_ascii_digit()) => Event::Text(format!("${m}$").into()),
+        e => e,
+    })
 }
 
 /// Rewrites `\(…\)` and `\[…\]` to `$…$` and `$$…$$` outside code so the parser's math
@@ -130,7 +135,7 @@ fn safe_url(url: &str) -> bool {
 /// for KaTeX and code blocks carry `language-*` classes for highlighting.
 pub fn to_html(src: &str) -> String {
     let src = normalize_math(src);
-    let events = parser(&src).map(|e| match e {
+    let events = events(&src).map(|e| match e {
         Event::Start(Tag::HtmlBlock) => Event::Html(CowStr::Borrowed("<pre class=\"raw\">")),
         Event::End(TagEnd::HtmlBlock) => Event::Html(CowStr::Borrowed("</pre>")),
         Event::InlineHtml(h) if SAFE_INLINE.contains(&h.to_ascii_lowercase().as_str()) => Event::InlineHtml(h),
@@ -151,7 +156,7 @@ pub fn to_html(src: &str) -> String {
 /// The text content of Markdown on one line, cut to `max` characters.
 pub fn plain(src: &str, max: usize) -> String {
     let mut out = String::new();
-    for e in parser(src) {
+    for e in events(src) {
         match e {
             Event::Text(s) | Event::Code(s) | Event::InlineMath(s) | Event::DisplayMath(s) => out.push_str(&s),
             Event::SoftBreak | Event::HardBreak | Event::End(_) => out.push(' '),

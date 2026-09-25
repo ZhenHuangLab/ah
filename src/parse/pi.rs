@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use super::{Parser, fence, one_line, output, take_str, tokens, ts};
+use super::{Parser, fence, one_line, output, take_str, task, tokens, ts};
 use crate::model::{Block, Image, NoticeKind, Role, Transcript};
 
 #[derive(Default)]
@@ -54,10 +54,7 @@ impl Parser for Pi {
                     }
                 }
             }
-            "custom_message" if v["display"].as_bool() == Some(true) => {
-                let (body, _) = content(v["content"].take());
-                t.notice(time, NoticeKind::Info, take_str(&mut v["customType"]), body);
-            }
+            "custom_message" if v["display"].as_bool() == Some(true) => custom(t, time, &mut v),
             "model_change" => {
                 let model = v["modelId"].as_str().unwrap_or("").to_string();
                 let label = format!("{}/{model}", v["provider"].as_str().unwrap_or(""));
@@ -158,11 +155,16 @@ fn message(t: &mut Transcript, time: Option<i64>, mut m: Value) {
             let body = if out.trim().is_empty() { String::new() } else { fence(&out, "") };
             t.notice(time, NoticeKind::Shell, format!("! {cmd}"), body);
         }
-        "custom" if m["display"].as_bool() == Some(true) => {
-            let (body, _) = content(m["content"].take());
-            t.notice(time, NoticeKind::Info, take_str(&mut m["customType"]), body);
-        }
+        "custom" if m["display"].as_bool() == Some(true) => custom(t, time, &mut m),
         _ => {}
+    }
+}
+
+/// A message an extension shows in pi's interface.
+fn custom(t: &mut Transcript, time: Option<i64>, v: &mut Value) {
+    let (body, _) = content(v["content"].take());
+    if !task(t, time, &body) {
+        t.notice(time, NoticeKind::Info, take_str(&mut v["customType"]), body);
     }
 }
 

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::model::{Agent, Image, Output, Transcript};
+use crate::model::{Agent, Image, NoticeKind, Output, Transcript};
 
 pub trait Parser: Send {
     fn line(&mut self, t: &mut Transcript, v: Value);
@@ -50,6 +50,33 @@ fn tag<'a>(s: &'a str, tag: &str) -> Option<&'a str> {
     let start = s.find(&open)? + open.len();
     let end = s[start..].find(&close).map_or(s.len(), |e| start + e);
     Some(s[start..end].trim_matches('\n'))
+}
+
+/// Background-task and subagent notifications (`<task-notification>`, `<subagent-update>`)
+/// as one line with the result folded under it. Returns false for other text.
+fn task(t: &mut Transcript, time: Option<i64>, s: &str) -> bool {
+    let s = s.trim_start();
+    let (label, body) = if s.starts_with("<task-notification>") {
+        let label = match tag(s, "summary") {
+            Some(summary) => summary.trim().to_string(),
+            None => format!("Background task {}", tag(s, "status").unwrap_or("finished")),
+        };
+        (label, tag(s, "result").unwrap_or(""))
+    } else if s.starts_with("<subagent-update>") {
+        (tag(s, "summary").unwrap_or("Subagent update").trim().to_string(), tag(s, "message").unwrap_or(""))
+    } else {
+        return false;
+    };
+    t.notice(time, NoticeKind::Task, unescape(&label), unescape(body.trim()));
+    true
+}
+
+/// Undoes the XML escaping of notification fields.
+fn unescape(s: &str) -> String {
+    if !s.contains('&') {
+        return s.to_string();
+    }
+    s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
 }
 
 fn output(text: String, error: bool, images: Vec<Image>) -> Output {

@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 
-use super::{Parser, fence, one_line, output, strip_ansi, tag, take_str, tokens, ts};
+use super::{Parser, fence, one_line, output, strip_ansi, tag, take_str, task, tokens, ts};
 use crate::model::{Block, Image, NoticeKind, Role, Transcript};
 
 #[derive(Default)]
@@ -156,8 +156,7 @@ impl Claude {
             }
             return true;
         }
-        if s.starts_with("<task-notification>") {
-            task(t, time, s);
+        if task(t, time, s) {
             return true;
         }
         if s.starts_with("[Request interrupted by user") {
@@ -266,15 +265,6 @@ impl Claude {
         blocks.extend(images.into_iter().map(Block::Image));
         t.push(Role::User, time, blocks);
     }
-}
-
-fn task(t: &mut Transcript, time: Option<i64>, s: &str) {
-    let label = match tag(s, "summary") {
-        Some(summary) => summary.trim().to_string(),
-        None => format!("Background task {}", tag(s, "status").unwrap_or("finished")),
-    };
-    let body = tag(s, "result").unwrap_or("").trim().to_string();
-    t.notice(time, NoticeKind::Task, label, body);
 }
 
 /// Text and images of a string-or-blocks content value.

@@ -49,7 +49,7 @@ pub fn render(src: &str, width: usize, base: Style) -> Vec<Row> {
         table: None,
         gap: false,
     };
-    for e in markdown::parser(&src) {
+    for e in markdown::events(&src) {
         r.event(e);
     }
     r.flush();
