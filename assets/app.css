@@ -14,7 +14,9 @@
   --err: #cf222e;
   --warn: #9a6700;
   --tick: #c7ccd3;
+  --logo: #1f2328;
   --shadow: 0 10px 30px rgba(15, 23, 42, .12), 0 1px 3px rgba(15, 23, 42, .08);
+  --backdrop: rgba(15, 23, 42, .28);
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", "Noto Sans Mono CJK SC", monospace;
   --hl-kw: #cf222e; --hl-str: #0a3069; --hl-com: #6e7781; --hl-num: #0550ae; --hl-fn: #8250df; --hl-type: #953800; --hl-attr: #0550ae;
@@ -37,7 +39,9 @@
   --err: #f85149;
   --warn: #d29922;
   --tick: #52525b;
+  --logo: #2df9c0;
   --shadow: 0 10px 30px rgba(0, 0, 0, .5), 0 1px 3px rgba(0, 0, 0, .4);
+  --backdrop: rgba(0, 0, 0, .55);
   --hl-kw: #ff7b72; --hl-str: #a5d6ff; --hl-com: #8b949e; --hl-num: #79c0ff; --hl-fn: #d2a8ff; --hl-type: #ffa657; --hl-attr: #79c0ff;
   --hl-add: #aff5b4; --hl-add-bg: #033a16; --hl-del: #ffdcd7; --hl-del-bg: #67060c;
   color-scheme: dark;
@@ -80,9 +84,12 @@ a { color: var(--accent); }
 #grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; transition: background .15s; }
 #grip:hover::after, .resizing #grip::after { background: var(--accent); }
 .resizing, .resizing * { cursor: col-resize !important; user-select: none; }
-.side-head { padding: 12px 12px 6px; }
+.side-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 6px; }
+/* The pixel mark, one cell per CSS pixel so it stays sharp; its color follows the theme */
+.logo { flex: none; width: 24px; height: 22px; background: var(--logo); mask: url(logo.svg) center / contain no-repeat; }
 #filter {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   font: inherit;
   font-size: 14px;
   color: inherit;
@@ -191,6 +198,9 @@ a { color: var(--accent); }
 .md { overflow-wrap: anywhere; }
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }
+/* Text blocks of one message stay a paragraph apart when the views hide what was between them */
+.item > .md ~ .md { margin-top: .7em; }
+.answers .item > .final { margin-top: 0; }
 .md p, .md ul, .md ol, .md pre, .md table, .md blockquote { margin: .7em 0; }
 .md h1, .md h2, .md h3, .md h4 { line-height: 1.35; margin: 1.3em 0 .5em; }
 .md h1 { font-size: 1.45em; }
@@ -377,7 +387,7 @@ details.notice .md { font-size: 14px; color: var(--muted); margin: 6px 0 10px 18
 }
 
 /* Command list */
-#palette { position: fixed; inset: 0; z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; background: rgba(15, 23, 42, .28); }
+#palette { position: fixed; inset: 0; z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; background: var(--backdrop); }
 #palette[hidden] { display: none; }
 .pal { width: min(560px, 92vw); max-height: 72vh; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
 #pal-q { font: inherit; font-size: 15px; color: inherit; background: none; border: none; border-bottom: 1px solid var(--line); padding: 12px 16px; outline: none; }
@@ -408,7 +418,7 @@ kbd { font-family: var(--mono); font-size: 12px; min-width: 22px; text-align: ce
   #side { position: fixed; z-index: 20; top: 0; bottom: 0; left: 0; width: min(320px, 86vw); transform: translateX(-100%); transition: transform .2s; box-shadow: var(--shadow); }
   .side-open #side { transform: none; }
   .side-closed #side { display: flex; }
-  .side-open #main::after { content: ""; position: fixed; inset: 0; z-index: 10; background: rgba(15, 23, 42, .28); }
+  .side-open #main::after { content: ""; position: fixed; inset: 0; z-index: 10; background: var(--backdrop); }
   #grip, #theme { display: none; }
   #top { gap: 6px; padding: 8px 10px; }
   #conv { padding: 16px 36px 30vh 12px; }
