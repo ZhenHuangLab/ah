@@ -52,6 +52,8 @@ struct Sel {
 
 pub struct Viewer {
     pub live: Live,
+    /// The transcript generation the layout below belongs to.
+    generation: u64,
     cache: Vec<Cached>,
     /// Bumped when a fold inside the item changes.
     ver: Vec<u64>,
@@ -73,8 +75,10 @@ pub struct Viewer {
 
 impl Viewer {
     pub fn open(meta: SessionMeta) -> Result<Viewer> {
+        let live = Live::open(meta)?;
         Ok(Viewer {
-            live: Live::open(meta)?,
+            generation: live.generation,
+            live,
             cache: Vec::new(),
             ver: Vec::new(),
             starts: vec![0],
@@ -126,6 +130,16 @@ impl Viewer {
 
     /// Lays out items that changed, keeping the top row's item in place.
     fn layout(&mut self) {
+        if self.generation != self.live.generation {
+            // The file was replaced or rewritten: rows, folds and positions describe items
+            // that no longer exist.
+            self.generation = self.live.generation;
+            self.cache.clear();
+            self.ver.clear();
+            self.open.clear();
+            self.focus = None;
+            self.sel = None;
+        }
         let items = &self.live.t.items;
         let anchor = (!self.cache.is_empty()).then(|| {
             let i = self.item_at(self.top);
@@ -308,10 +322,14 @@ impl Viewer {
 
     /// Jumps to the next or previous prompt.
     fn prompt(&mut self, forward: bool) {
+        // Only items laid out by the last draw have rows; a key can arrive before the first.
         let items = &self.live.t.items;
-        let prompts: Vec<usize> = (0..items.len())
-            .filter(|&i| items[i].role == Role::User && self.starts[i + 1] > self.starts[i])
-            .map(|i| self.starts[i])
+        let prompts: Vec<usize> = self
+            .starts
+            .windows(2)
+            .enumerate()
+            .filter(|&(i, w)| w[1] > w[0] && items.get(i).is_some_and(|it| it.role == Role::User))
+            .map(|(_, w)| w[0])
             .collect();
         let target = if forward { prompts.iter().find(|&&s| s > self.top) } else { prompts.iter().rev().find(|&&s| s < self.top) };
         match target.copied() {
@@ -614,7 +632,10 @@ const HELP: &[(&str, &str)] = &[
 fn draw_help(buf: &mut Buffer, area: Rect) {
     let w = 64.min(area.width);
     let h = (HELP.len() as u16 + 4).min(area.height);
-    let r = Rect::new(area.x + (area.width - w) / 2, area.y + (area.height.saturating_sub(h)) / 2, w, h);
+    if w < 8 || h < 3 {
+        return;
+    }
+    let r = Rect::new(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h);
     buf.set_style(r, theme::BAR);
     for y in r.y..r.bottom() {
         buf.set_stringn(r.x, y, " ".repeat(w as usize), w as usize, theme::BAR);
@@ -625,7 +646,7 @@ fn draw_help(buf: &mut Buffer, area: Rect) {
         if y + 1 >= r.bottom() {
             break;
         }
-        buf.set_stringn(r.x + 2, y, keys, 22, theme::BAR_KEY);
+        buf.set_stringn(r.x + 2, y, keys, (w as usize - 4).min(22), theme::BAR_KEY);
         buf.set_stringn(r.x + 24, y, what, w.saturating_sub(26) as usize, theme::BAR);
     }
 }

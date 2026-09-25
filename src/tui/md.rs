@@ -63,7 +63,7 @@ pub fn code_rows(text: &str, lang: &str, width: usize) -> Vec<Row> {
     for line in text.trim_end_matches('\n').split('\n') {
         let style = if diff { diff_style(line) } else { theme::CODE_BLOCK };
         for row in Styled::plain(line, style).rows(width.saturating_sub(2).max(4)) {
-            let mut row = row.indent(Span::raw(" "), false);
+            let mut row = row.indent(Span::raw(" "), true);
             row.fill = Some((0, theme::CODE_BG));
             rows.push(row);
         }
@@ -151,6 +151,9 @@ impl R {
             if let Some((col, _)) = &mut row.fill {
                 *col += w as u16;
             }
+            if row.pad > 0 {
+                row.pad += w as u16;
+            }
             self.rows.push(row);
         }
     }
@@ -198,7 +201,7 @@ impl R {
                 let body: Vec<Row> = Styled::plain(&lines.join("\n"), theme::MATH)
                     .rows(avail)
                     .into_iter()
-                    .map(|r| r.indent(Span::raw("  "), false))
+                    .map(|r| r.indent(Span::raw("  "), true))
                     .collect();
                 self.emit(body, first, rest);
             }

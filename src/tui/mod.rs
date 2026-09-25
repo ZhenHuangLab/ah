@@ -44,13 +44,7 @@ pub fn run(query: Option<&str>) -> Result<()> {
     let mut app = App { direct: viewer.is_some(), viewer, picker: Picker::new(list, cwd), roots };
 
     let (tx, rx) = mpsc::channel::<PathBuf>();
-    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        if let Ok(ev) = res {
-            for p in ev.paths.into_iter().filter(|p| p.extension().is_some_and(|e| e == "jsonl")) {
-                let _ = tx.send(p);
-            }
-        }
-    })?;
+    let mut watcher = discover::watcher(tx)?;
     let mut dirs: Vec<PathBuf> = app.roots.dirs().into_iter().map(PathBuf::from).collect();
     if let Some(dir) = app.viewer.as_ref().and_then(|v| v.live.meta.path.parent())
         && !dirs.iter().any(|d| dir.starts_with(d))
@@ -119,7 +113,10 @@ impl App {
             match action {
                 Action::Quit => return Ok(true),
                 Action::Back if self.direct => return Ok(true),
-                Action::Back => self.viewer = None,
+                Action::Back => {
+                    self.picker.retitle(&v.live.meta);
+                    self.viewer = None;
+                }
                 Action::None => {}
             }
             return Ok(false);

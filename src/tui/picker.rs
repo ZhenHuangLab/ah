@@ -1,7 +1,6 @@
 //! The session list: sessions from this directory first, then everything by recency.
 
-use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -9,7 +8,7 @@ use ratatui::layout::Rect;
 
 use super::text::{truncate, width};
 use super::theme;
-use crate::discover::{self, Roots, mtime_ms};
+use crate::discover::{self, Roots};
 use crate::model::SessionMeta;
 
 pub enum Pick {
@@ -32,7 +31,7 @@ pub struct Picker {
 impl Picker {
     pub fn new(all: Vec<SessionMeta>, cwd: String) -> Picker {
         let mut p = Picker { all, cwd, filter: String::new(), shown: Vec::new(), sel: 0, top: 0, height: 0, msg: None };
-        p.sort();
+        p.sort(None);
         p
     }
 
@@ -40,9 +39,13 @@ impl Picker {
         m.cwd == self.cwd
     }
 
-    /// Re-sorts and re-filters, keeping the selected session selected.
-    fn sort(&mut self) {
-        let keep = self.shown.get(self.sel).map(|&i| self.all[i].path.clone());
+    /// The file of the selected session.
+    fn selected(&self) -> Option<PathBuf> {
+        self.shown.get(self.sel).map(|&i| self.all[i].path.clone())
+    }
+
+    /// Re-sorts and re-filters, selecting `keep` again when it is still shown.
+    fn sort(&mut self, keep: Option<PathBuf>) {
         let cwd = self.cwd.clone();
         self.all.sort_by(|a, b| (b.cwd == cwd).cmp(&(a.cwd == cwd)).then(b.modified.cmp(&a.modified)));
         let words: Vec<String> = self.filter.to_lowercase().split_whitespace().map(String::from).collect();
@@ -58,20 +61,28 @@ impl Picker {
 
     /// Picks up a changed session file.
     pub fn changed(&mut self, roots: &Roots, path: &Path) {
-        if let Some(m) = self.all.iter_mut().find(|m| m.path == path) {
-            match fs::metadata(path) {
-                Ok(md) => {
-                    m.modified = mtime_ms(&md);
-                    m.size = md.len();
-                }
-                Err(_) => self.all.retain(|m| m.path != path),
+        let keep = self.selected();
+        let fresh = roots.classify(path).and_then(|agent| discover::meta(agent, path, true));
+        match (self.all.iter().position(|m| m.path == path), fresh) {
+            (Some(k), Some(mut m)) => {
+                m.id = std::mem::take(&mut self.all[k].id);
+                self.all[k] = m;
             }
-        } else if let Some(m) = roots.classify(path).and_then(|agent| discover::meta(agent, path, true)) {
-            self.all.push(m);
-        } else {
-            return;
+            (Some(k), None) => {
+                self.all.remove(k);
+            }
+            (None, Some(m)) => self.all.push(m),
+            (None, None) => return,
         }
-        self.sort();
+        self.sort(keep);
+    }
+
+    /// Takes the title found by reading a whole session, which may name it where the list
+    /// scan did not look.
+    pub fn retitle(&mut self, meta: &SessionMeta) {
+        if let Some(m) = self.all.iter_mut().find(|m| m.path == meta.path) {
+            m.title.clone_from(&meta.title);
+        }
     }
 
     fn select(&mut self, sel: isize) {
@@ -89,11 +100,11 @@ impl Picker {
             KeyCode::Char('p') if ctrl => self.select(sel - 1),
             KeyCode::Char('u') if ctrl => {
                 self.filter.clear();
-                self.sort();
+                self.sort(self.selected());
             }
             KeyCode::Esc if !self.filter.is_empty() => {
                 self.filter.clear();
-                self.sort();
+                self.sort(self.selected());
             }
             KeyCode::Esc => return Pick::Quit,
             KeyCode::Down => self.select(sel + 1),
@@ -105,11 +116,11 @@ impl Picker {
             KeyCode::Enter => return self.pick(),
             KeyCode::Backspace => {
                 self.filter.pop();
-                self.sort();
+                self.sort(self.selected());
             }
             KeyCode::Char(c) if !ctrl => {
                 self.filter.push(c);
-                self.sort();
+                self.sort(self.selected());
             }
             _ => {}
         }
@@ -161,7 +172,7 @@ impl Picker {
             let cells = [
                 (if on { "❯" } else { " " }.to_string(), 2, base.patch(theme::PROMPT_MARK)),
                 ((if self.here(m) { "*" } else { " " }).to_string(), 1, base.patch(theme::TOOLS)),
-                (format!("{:>4}", age(now - m.modified)), 6, base.patch(theme::DIM)),
+                (format!("{:>4}", age(now - m.modified)), 6, base.patch(if now - m.modified < 120_000 { theme::OK } else { theme::DIM })),
                 (m.agent.name().to_string(), 7, base.patch(theme::agent(m.agent.name()))),
                 (truncate(m.project(), 18), 20, base.patch(theme::MUTED)),
             ];

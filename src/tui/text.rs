@@ -34,14 +34,15 @@ impl Row {
         self.spans.iter().map(|s| s.content.as_ref()).collect()
     }
 
-    /// Adds `prefix` in front, keeping fills and copy padding aligned.
+    /// Adds `prefix` in front, keeping fills and copy padding aligned. A prefix in front of
+    /// padding is left out of copies too.
     pub fn indent(mut self, prefix: Span<'static>, pad: bool) -> Row {
         let w = prefix.width() as u16;
         self.spans.insert(0, prefix);
         if let Some((col, _)) = &mut self.fill {
             *col += w;
         }
-        if pad {
+        if pad || self.pad > 0 {
             self.pad += w;
         }
         self
