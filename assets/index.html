@@ -11,9 +11,9 @@
     var t = localStorage.getItem('ah.theme');
     if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     root.dataset.theme = t;
-    if (localStorage.getItem('ah.style') === 'pixel') root.dataset.style = 'pixel';
+    root.dataset.style = localStorage.getItem('ah.style') === 'minimal' ? 'minimal' : 'pixel';
     var f = localStorage.getItem('ah.font');
-    if (f === 'mono' || f === 'pixel') root.dataset.font = f;
+    root.dataset.font = f === 'sans' || f === 'pixel' ? f : 'mono';
     var v = localStorage.getItem('ah.view');
     if (v === 'chat' || v === 'answers') root.classList.add('chat');
     if (v === 'answers') root.classList.add('answers');

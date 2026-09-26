@@ -779,8 +779,8 @@ function renderSettings() {
   $('#pal-set [data-scale="1"]').disabled = S.scale === SCALES[SCALES.length - 1];
   for (const b of $$('#pal-set [data-wide]')) b.classList.toggle('on', (b.dataset.wide === '1') === S.wide);
   for (const b of $$('#pal-set [data-theme]')) b.classList.toggle('on', b.dataset.theme === root.dataset.theme);
-  for (const b of $$('#pal-set [data-look]')) b.classList.toggle('on', b.dataset.look === (root.dataset.style || 'minimal'));
-  for (const b of $$('#pal-set [data-face]')) b.classList.toggle('on', b.dataset.face === (root.dataset.font || 'sans'));
+  for (const b of $$('#pal-set [data-look]')) b.classList.toggle('on', b.dataset.look === root.dataset.style);
+  for (const b of $$('#pal-set [data-face]')) b.classList.toggle('on', b.dataset.face === root.dataset.font);
   for (const g of $$('#pal-set .slide')) slide(g);
 }
 
@@ -798,21 +798,19 @@ function switchTheme() {
   setTheme(t);
 }
 
-/** The minimal style, or the pixel style: square edges drawn in pixels and hard shadows. */
+/** The pixel style, the default: square edges drawn in pixels and hard shadows; or the minimal one. */
 function setLook(look) {
   keepPlace(() => {
-    if (look === 'pixel') root.dataset.style = 'pixel';
-    else delete root.dataset.style;
+    root.dataset.style = look;
     localStorage.setItem('ah.style', look);
   });
   renderSettings();
 }
 
-/** The font of the page and the conversation: sans-serif, monospace or pixel. */
+/** The font of the page and the conversation: monospace, the default, sans-serif or pixel. */
 function setFont(face) {
   keepPlace(() => {
-    if (face === 'sans') delete root.dataset.font;
-    else root.dataset.font = face;
+    root.dataset.font = face;
     localStorage.setItem('ah.font', face);
   });
   renderSettings();

@@ -131,8 +131,10 @@ Press `?` or Ctrl-K, or click ⋯, for a list of all commands with their keys; t
 to filter it, and pick one with the arrow keys and Enter or with the mouse.
 Buttons above the commands set the text size of the conversation (`+`, `-`),
 switch between a centered column and the full width of the window (`w`), and pick
-the light or dark theme, the minimal or pixel style (square edges drawn in pixels,
-with hard shadows), and the font: sans-serif, monospace or pixel.
+the light or dark theme, the style, and the font. The pixel style, the default,
+draws square edges in pixels with hard shadows and shows what is selected in
+inverted colors; the minimal style has rounded edges and soft highlights. The font
+of the page and the conversation is monospace by default, or sans-serif or pixel.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/palette-dark.png">

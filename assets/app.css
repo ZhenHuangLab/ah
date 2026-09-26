@@ -99,12 +99,14 @@ a { color: var(--accent); }
   flex: 1;
   min-width: 0;
   font: inherit;
-  font-size: 14px;
+  height: 26px;
+  font-size: 13px;
+  line-height: 1.2;
   color: inherit;
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 6px 10px;
+  border-radius: 7px;
+  padding: 0 9px;
   outline: none;
 }
 #filter:focus { border-color: var(--accent); }
@@ -542,8 +544,8 @@ html[data-font=pixel] body { font-family: "Pixelify Sans", var(--sans); }
 .seg [data-face=mono] { font-family: var(--mono); }
 .seg [data-face=pixel] { font-family: "Pixelify Sans", var(--sans); }
 
-/* Pixel style: edges drawn in whole pixels with notched corners, hard shadows under what floats,
-   and the selection in inverted colors */
+/* Pixel style, the default: edges drawn in whole pixels with notched corners, hard shadows under what
+   floats, and whatever is selected in inverted colors */
 .seg svg.px { stroke-linejoin: miter; stroke-linecap: butt; }
 [data-style=pixel] {
   --px-line: var(--faint);
@@ -557,14 +559,17 @@ html[data-font=pixel] body { font-family: "Pixelify Sans", var(--sans); }
 [data-style=pixel] .prompt { margin-right: 6px; box-shadow: var(--px-edge), 5px 5px 0 2px var(--px-drop); }
 [data-style=pixel] .md code { box-shadow: 0 -1px var(--line), 0 1px var(--line), -1px 0 var(--line), 1px 0 var(--line); }
 [data-style=pixel] .md pre code { box-shadow: none; }
-[data-style=pixel] #filter:focus { --px-line: var(--accent); }
+/* The filter's edge sits outside its box, so the box is as tall as the mark with its edge */
+[data-style=pixel] #filter { height: 22px; margin: 0 2px; }
+[data-style=pixel] #filter:focus { box-shadow: 0 -2px var(--accent), 0 2px var(--accent), -2px 0 var(--accent), 2px 0 var(--accent); }
 [data-style=pixel] :is(.pal, #toast, #card, #bottom) { border: none; box-shadow: var(--px-float); }
 [data-style=pixel] #toast { color: var(--fg); background: var(--bg); }
-[data-style=pixel] :is(.cmd.sel, button.primary) { background: var(--fg); color: var(--bg); }
+[data-style=pixel] :is(.cmd.sel, button.primary, .row.on, #view.on) { background: var(--fg); color: var(--bg); }
+[data-style=pixel] .row.on :is(.m, .agent) { color: var(--bg); }
+[data-style=pixel] .row.on .m { opacity: .75; }
 [data-style=pixel] .slide::before { background: var(--fg); }
 [data-style=pixel] :is(.seg button.on, #agents button.on) { color: var(--bg); }
 [data-style=pixel] #agents button.on .ico { color: var(--bg); }
-[data-style=pixel] .row.on { box-shadow: var(--px-edge); }
 [data-style=pixel] .notice.compaction > summary, [data-style=pixel] .notice.rewind > summary,
 [data-style=pixel] .notice.compaction > span, [data-style=pixel] .notice.rewind > span { border-style: dashed; border-width: 2px; }
 [data-style=pixel] .tool-list, [data-style=pixel] .thinking .md, [data-style=pixel] details.notice .md { border-left-style: dotted; }
