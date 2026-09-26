@@ -25,6 +25,16 @@
 
 ## 安装
 
+每个 [release](https://github.com/ZhenHuangLab/ah/releases) 都附有 macOS（Apple Silicon 和 Intel）和 Linux（x86_64 和 ARM64）的程序。Linux 版本是静态链接的，任何发行版都能运行。把最新版本装到 `~/.local/bin`：
+
+```sh
+target=aarch64-apple-darwin  # 或 x86_64-apple-darwin、x86_64-unknown-linux-musl、aarch64-unknown-linux-musl
+mkdir -p ~/.local/bin
+curl -fsSL https://github.com/ZhenHuangLab/ah/releases/latest/download/ah-$target.tar.gz | tar xz -C ~/.local/bin ah
+```
+
+在 macOS 上用浏览器下载的程序会被系统拦截，运行 `xattr -d com.apple.quarantine ah` 即可放行。也可以从源码编译：
+
 ```sh
 cargo install --git https://github.com/ZhenHuangLab/ah
 ```

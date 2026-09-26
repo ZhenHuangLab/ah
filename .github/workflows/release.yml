@@ -1,0 +1,76 @@
+# Builds ah for each platform and attaches the archives to the GitHub release of the tag.
+# Runs when a v* tag is pushed; run it by hand with a tag to add binaries to an existing release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build, such as v0.2.0
+        required: true
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-24.04 }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }} && rustup default stable
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        # The names carry no version, so releases/latest/download/<name> always gets the newest.
+        run: |
+          name="ah-${{ matrix.target }}.tar.gz"
+          cp README.md LICENSE "target/${{ matrix.target }}/release/"
+          tar czf "$name" -C "target/${{ matrix.target }}/release" ah README.md LICENSE
+          shasum -a 256 "$name" > "$name.sha256"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: ah-*.tar.gz*
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create the release from the changelog if it does not exist
+        run: |
+          gh release view "$TAG" > /dev/null 2>&1 && exit 0
+          version="${TAG#v}"
+          # The changelog wraps list items; release notes keep line breaks, so join them.
+          awk -v v="$version" '
+            /^## / { on = $2 == v; next }
+            !on { next }
+            /^  [^ ]/ && n { sub(/^ +/, ""); line[n] = line[n] " " $0; next }
+            { line[++n] = $0 }
+            END { for (i = 1; i <= n; i++) print line[i] }
+          ' CHANGELOG.md > notes.md
+          grep -q . notes.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          gh release create "$TAG" --verify-tag --title "ah $version" --notes-file notes.md
+      - run: gh release upload "$TAG" dist/* --clobber

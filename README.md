@@ -32,6 +32,20 @@ updates as the agent writes.
 
 ## Install
 
+Each [release](https://github.com/ZhenHuangLab/ah/releases) has binaries for
+macOS (Apple Silicon and Intel) and Linux (x86_64 and ARM64). The Linux ones are
+statically linked and run on any distribution. To put the latest one in
+`~/.local/bin`:
+
+```sh
+target=aarch64-apple-darwin  # or x86_64-apple-darwin, x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
+mkdir -p ~/.local/bin
+curl -fsSL https://github.com/ZhenHuangLab/ah/releases/latest/download/ah-$target.tar.gz | tar xz -C ~/.local/bin ah
+```
+
+macOS blocks a binary downloaded in a browser; `xattr -d com.apple.quarantine ah`
+allows it. To build from source instead:
+
 ```sh
 cargo install --git https://github.com/ZhenHuangLab/ah
 ```
