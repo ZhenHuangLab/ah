@@ -4,6 +4,10 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 
 const LIVE_MS = 2 * 60 * 1000;
+// The server pings every 15 s; a stream silent for this long has lost its connection.
+const SILENT_MS = 45 * 1000;
+// Text sizes of the conversation, as factors of the default.
+const SCALES = [0.8, 0.9, 1, 1.1, 1.2, 1.35, 1.5];
 const ICON_COPY = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/>' +
   '<path d="M10.5 5.5V4.3a1.8 1.8 0 0 0-1.8-1.8H4.3a1.8 1.8 0 0 0-1.8 1.8v4.4a1.8 1.8 0 0 0 1.8 1.8h1.2"/></svg>';
 const ICON_DONE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
@@ -31,8 +35,13 @@ const S = {
   folders: new Set(JSON.parse(localStorage.getItem('ah.folders') || '[]')),
   // all: everything; chat: no tool calls, thinking or notices; answers: prompts and final answers.
   view: VIEWS.includes(localStorage.getItem('ah.view')) ? localStorage.getItem('ah.view') : 'all',
+  scale: SCALES.includes(+localStorage.getItem('ah.scale')) ? +localStorage.getItem('ah.scale') : 1,
+  // The conversation across the whole window rather than in a centered column.
+  wide: localStorage.getItem('ah.wide') === '1',
   // The open session: {id, gen, rev, meta, items: [], els: []}.
   cur: null,
+  // Event streams of the session list and of the open session.
+  listEs: null,
   es: null,
   opening: 0,
   follow: true,
@@ -214,20 +223,66 @@ function upsert(m) {
   listSoon();
 }
 
-function listEvents() {
-  const es = new EventSource('api/events');
-  let broken = false;
-  es.addEventListener('meta', e => upsert(JSON.parse(e.data)));
-  es.addEventListener('gone', e => {
-    S.sessions = S.sessions.filter(s => s.id !== e.data);
-    listSoon();
-  });
-  es.addEventListener('reload', loadSessions);
-  es.onerror = () => { broken = true; };
-  es.onopen = () => {
-    if (broken) loadSessions();
-    broken = false;
+/**
+ * An event stream that closes and calls `lost` on an error, or when the server has sent nothing,
+ * not even a ping, for SILENT_MS. Browsers allow six connections to a host over plain HTTP, and
+ * a connection that died with the network (a laptop that slept, a relay that dropped) would
+ * otherwise keep its place until the system gives up on it.
+ */
+function stream(url, on, lost) {
+  const es = new EventSource(url);
+  let timer = 0;
+  const close = () => {
+    clearTimeout(timer);
+    es.close();
   };
+  const fail = () => {
+    close();
+    lost();
+  };
+  const alive = () => {
+    clearTimeout(timer);
+    timer = setTimeout(fail, SILENT_MS);
+  };
+  es.addEventListener('ping', alive);
+  for (const [name, f] of Object.entries(on)) {
+    es.addEventListener(name, e => {
+      alive();
+      f(e);
+    });
+  }
+  es.onopen = alive;
+  es.onerror = fail;
+  alive();
+  return { close };
+}
+
+/** Follows changes to the session list; after a gap, `reload` fetches the list again. */
+function followList(reload) {
+  if (reload) loadSessions();
+  S.listEs = stream('api/events', {
+    meta: e => upsert(JSON.parse(e.data)),
+    gone: e => {
+      S.sessions = S.sessions.filter(s => s.id !== e.data);
+      listSoon();
+    },
+    reload: loadSessions,
+  }, () => {
+    S.listEs = null;
+    setTimeout(() => { if (!S.listEs && !document.hidden) followList(true); }, 2000);
+  });
+}
+
+/** Closes the streams while the page is hidden, so tabs in the background hold no connections. */
+function followWhileShown() {
+  if (document.hidden) {
+    if (S.listEs) S.listEs.close();
+    if (S.es) S.es.close();
+    S.listEs = S.es = null;
+    return;
+  }
+  if (!S.listEs) followList(true);
+  if (S.cur && !S.es) subscribe();
 }
 
 /** Shows or hides the session list: a drawer on narrow screens, a column that stays hidden otherwise. */
@@ -274,7 +329,7 @@ async function open(id, target) {
     $('#title').textContent = 'ah';
     $('#sub').innerHTML = '';
     document.title = 'ah';
-    $('#empty').textContent = r.status === 404 ? 'No such session.' : 'Could not load this session.';
+    $('#hint').textContent = r.status === 404 ? 'No such session.' : 'Could not load this session.';
     return;
   }
   const snap = await r.json();
@@ -298,32 +353,32 @@ async function open(id, target) {
   subscribe();
 }
 
+/** Follows the open session from its current revision; a hidden page catches up when shown. */
 function subscribe() {
+  if (document.hidden) return;
   const c = S.cur;
-  const es = new EventSource(`api/s/${encodeURIComponent(c.id)}/events?gen=${c.gen}&rev=${c.rev}`);
-  es.addEventListener('items', e => {
-    if (S.cur !== c) return;
-    const d = JSON.parse(e.data);
-    const follow = S.follow;
-    c.rev = d.rev;
-    Object.assign(c.meta, d.meta);
-    for (const it of d.items) put(it);
-    renderHead();
-    buildRail();
-    if (follow) stick();
-    else $('#bottom').hidden = false;
+  const es = stream(`api/s/${encodeURIComponent(c.id)}/events?gen=${c.gen}&rev=${c.rev}`, {
+    items: e => {
+      if (S.cur !== c) return;
+      const d = JSON.parse(e.data);
+      const follow = S.follow;
+      c.rev = d.rev;
+      Object.assign(c.meta, d.meta);
+      for (const it of d.items) put(it);
+      renderHead();
+      buildRail();
+      if (follow) stick();
+      else $('#bottom').hidden = false;
+    },
+    reset: () => {
+      if (S.cur === c) open(c.id, S.follow ? null : topItem());
+    },
+  }, () => {
+    // Reconnect by hand so the request carries the latest revision.
+    if (S.es !== es) return;
+    S.es = null;
+    setTimeout(() => { if (S.cur === c && !S.es && !document.hidden) subscribe(); }, 2000);
   });
-  es.addEventListener('reset', () => {
-    if (S.cur === c) open(c.id, S.follow ? null : topItem());
-  });
-  // Reconnect by hand so the request carries the latest revision.
-  es.onerror = () => {
-    es.close();
-    if (S.es === es) {
-      S.es = null;
-      setTimeout(() => { if (S.cur === c && !S.es) subscribe(); }, 2000);
-    }
-  };
   S.es = es;
 }
 
@@ -611,8 +666,12 @@ function showCard(k, tick) {
   card.style.top = Math.max(8, Math.min(top, box.height - card.offsetHeight - 8)) + 'px';
 }
 
-function setView(v) {
-  // Keep the reader's place: the top item if it stays shown, else the prompt of its turn.
+/**
+ * Runs `change`, which lays the conversation out anew, and keeps the reader's place: the top
+ * item if it stays shown, else the prompt of its turn. An item the view begins inside keeps the
+ * same part of it at the top as it grows or shrinks.
+ */
+function keepPlace(change) {
   const c = S.cur;
   const anchors = [];
   if (c && !S.follow) {
@@ -620,20 +679,65 @@ function setView(v) {
     if (i != null) anchors.push(c.els[i]);
     if (S.turns[S.on]) anchors.push(c.els[S.turns[S.on].i]);
   }
-  const before = anchors.map(el => el.getBoundingClientRect().top);
-  S.view = v;
-  localStorage.setItem('ah.view', v);
-  root.classList.toggle('chat', v !== 'all');
-  root.classList.toggle('answers', v === 'answers');
-  renderViewButton();
+  const at = el => {
+    const r = el.getBoundingClientRect();
+    return { y: r.top - scroller.getBoundingClientRect().top, h: r.height };
+  };
+  const before = anchors.map(at);
+  change();
   if (S.follow) {
     stick();
   } else {
     const k = anchors.findIndex(el => el.offsetParent);
-    if (k >= 0) scroller.scrollTop += anchors[k].getBoundingClientRect().top - before[k];
+    if (k >= 0) {
+      const was = before[k];
+      const now = at(anchors[k]);
+      scroller.scrollTop += now.y - (was.y < 0 && was.h ? was.y / was.h * now.h : was.y);
+    }
   }
   S.on = -1;
   spy();
+}
+
+function setView(v) {
+  keepPlace(() => {
+    S.view = v;
+    localStorage.setItem('ah.view', v);
+    root.classList.toggle('chat', v !== 'all');
+    root.classList.toggle('answers', v === 'answers');
+    renderViewButton();
+  });
+}
+
+/** Steps the conversation's text size up or down, or back to the default with 0. */
+function setScale(step) {
+  const k = SCALES.indexOf(S.scale);
+  const scale = step ? SCALES[Math.max(0, Math.min(SCALES.length - 1, k + step))] : 1;
+  if (scale === S.scale) return;
+  keepPlace(() => {
+    S.scale = scale;
+    localStorage.setItem('ah.scale', scale);
+    root.style.setProperty('--scale', scale);
+  });
+  renderSettings();
+}
+
+/** Lays the conversation across the whole window, or in a centered column. */
+function setWide(wide) {
+  keepPlace(() => {
+    S.wide = wide;
+    localStorage.setItem('ah.wide', wide ? '1' : '0');
+    root.classList.toggle('wide', wide);
+  });
+  renderSettings();
+}
+
+/** The text size and width controls at the top of the command list. */
+function renderSettings() {
+  $('#pal-scale').textContent = Math.round(S.scale * 100) + '%';
+  $('#pal-set [data-scale="-1"]').disabled = S.scale === SCALES[0];
+  $('#pal-set [data-scale="1"]').disabled = S.scale === SCALES[SCALES.length - 1];
+  for (const b of $$('#pal-set [data-wide]')) b.classList.toggle('on', (b.dataset.wide === '1') === S.wide);
 }
 
 /** The header button names the current view and switches to the next one. */
@@ -666,6 +770,9 @@ const COMMANDS = [
   { label: 'Show or hide the sessions', keys: ['s'], run: () => toggleSide() },
   { label: 'Find a session', keys: ['/'], run: findSession },
   { label: 'Group the sessions by folder', keys: [], on: () => S.group === 'folder', run: toggleGrouping },
+  { label: 'Larger text', keys: ['+'], run: () => setScale(1) },
+  { label: 'Smaller text', keys: ['-'], run: () => setScale(-1) },
+  { label: 'Full width: text across the whole window', keys: ['w'], on: () => S.wide, run: () => setWide(!S.wide) },
   { label: 'Switch between light and dark', keys: [], run: switchTheme },
 ];
 
@@ -675,6 +782,7 @@ function openPalette() {
   pal.q.value = '';
   pal.sel = 0;
   pal.el.hidden = false;
+  renderSettings();
   renderPalette();
   pal.q.focus();
 }
@@ -990,6 +1098,14 @@ function wire() {
   pal.el.addEventListener('mousedown', e => {
     if (e.target === pal.el) closePalette();
   });
+  // The settings keep the palette open, and the focus in its search field.
+  $('#pal-set').addEventListener('mousedown', e => e.preventDefault());
+  $('#pal-set').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.scale != null) setScale(+b.dataset.scale);
+    else setWide(b.dataset.wide === '1');
+  });
 
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
@@ -1010,6 +1126,7 @@ function wire() {
   });
 
   window.addEventListener('hashchange', route);
+  document.addEventListener('visibilitychange', followWhileShown);
   setInterval(() => {
     renderList();
     if (S.cur) renderHead();
@@ -1019,6 +1136,6 @@ function wire() {
 (async function init() {
   wire();
   await loadSessions();
-  listEvents();
+  if (!document.hidden) followList(false);
   route();
 })();

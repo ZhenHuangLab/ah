@@ -17,6 +17,9 @@
     if (localStorage.getItem('ah.side') === '0') root.classList.add('side-closed');
     var w = +localStorage.getItem('ah.sideW');
     if (w) root.style.setProperty('--side-w', w + 'px');
+    var k = +localStorage.getItem('ah.scale');
+    if (k) root.style.setProperty('--scale', k);
+    if (localStorage.getItem('ah.wide') === '1') root.classList.add('wide');
   })();
 </script>
 <link rel="stylesheet" href="assets/vendor/katex/katex.min.css">
@@ -62,7 +65,11 @@
   </header>
   <div id="scroll">
     <div id="conv"></div>
-    <div id="empty">Pick a session on the left.</div>
+    <div id="empty">
+      <span class="logo" aria-hidden="true"></span>
+      <p class="slogan"><b>a</b>gent <b>h</b>istory, <b>a</b>nyw<b>h</b>ere<b>!</b></p>
+      <p id="hint"><span class="left">Pick a session on the left.</span><span class="menu">Open ☰ to pick a session.</span></p>
+    </div>
   </div>
   <nav id="rail"><div id="ticks"></div></nav>
   <div id="card" hidden><div class="card-t"></div><div class="card-b"></div><div class="card-w"></div></div>
@@ -72,6 +79,17 @@
 <div id="palette" hidden>
   <div class="pal" role="dialog" aria-label="Commands">
     <input id="pal-q" type="text" placeholder="Search commands" autocomplete="off" spellcheck="false">
+    <div id="pal-set">
+      <div class="seg" role="group" aria-label="Text size">
+        <button tabindex="-1" data-scale="-1" title="Smaller text (-)" aria-label="Smaller text"><span class="a-s">A</span></button>
+        <button tabindex="-1" data-scale="0" id="pal-scale" title="Default text size"></button>
+        <button tabindex="-1" data-scale="1" title="Larger text (+)" aria-label="Larger text"><span class="a-l">A</span></button>
+      </div>
+      <div class="seg width" role="group" aria-label="Width">
+        <button tabindex="-1" data-wide="0" title="Centered column (w)" aria-label="Centered column"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.8"/><path d="M5.5 6h5M5.5 8h5M5.5 10h3"/></svg></button>
+        <button tabindex="-1" data-wide="1" title="Full width (w)" aria-label="Full width"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.8"/><path d="M3.5 6h9M3.5 8h9M3.5 10h6"/></svg></button>
+      </div>
+    </div>
     <div id="pal-list" role="listbox"></div>
     <div class="pal-foot">↑↓ choose · enter run · esc close · open with ? or Ctrl K</div>
   </div>

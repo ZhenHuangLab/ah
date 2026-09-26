@@ -84,8 +84,9 @@ in this pi session in the answers view:
 ah serve
 ```
 
-This listens on the machine's Tailscale address and on 127.0.0.1, port 7447,
-so any device on the tailnet can open `http://<machine>:7447/`. Use
+This listens on the machine's Tailscale addresses (IPv4 and IPv6) and on
+127.0.0.1, port 7447, so any device on the tailnet can open
+`http://<machine>:7447/`. Use
 `--addr IP:PORT` (repeatable) to choose other addresses. There is no login, so
 the server only answers requests that name it by IP address, `localhost` or its
 Tailscale name (`machine` or `machine.<tailnet>.ts.net`); this keeps web pages
@@ -112,6 +113,8 @@ session list is grouped by folder:
 
 Press `?` or Ctrl-K, or click ⋯, for a list of all commands with their keys; type
 to filter it, and pick one with the arrow keys and Enter or with the mouse.
+Buttons above the commands set the text size of the conversation (`+`, `-`) and
+switch between a centered column and the full width of the window (`w`).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/palette-dark.png">

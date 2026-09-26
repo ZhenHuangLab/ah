@@ -19,6 +19,8 @@
   --backdrop: rgba(15, 23, 42, .28);
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", "Noto Sans Mono CJK SC", monospace;
+  /* Text size of the conversation, set in the command list; its column widens with it */
+  --scale: 1;
   --hl-kw: #cf222e; --hl-str: #0a3069; --hl-com: #6e7781; --hl-num: #0550ae; --hl-fn: #8250df; --hl-type: #953800; --hl-attr: #0550ae;
   --hl-add: #116329; --hl-add-bg: #e6ffec; --hl-del: #82071e; --hl-del-bg: #ffebe9;
   color-scheme: light;
@@ -85,7 +87,7 @@ a { color: var(--accent); }
 #grip:hover::after, .resizing #grip::after { background: var(--accent); }
 .resizing, .resizing * { cursor: col-resize !important; user-select: none; }
 .side-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 6px; }
-/* The pixel mark, one cell per CSS pixel so it stays sharp; its color follows the theme */
+/* The pixel mark, a whole number of CSS pixels per cell so it stays sharp; its color follows the theme */
 .logo { flex: none; width: 24px; height: 22px; background: var(--logo); mask: url(logo.svg) center / contain no-repeat; }
 #filter {
   flex: 1;
@@ -157,10 +159,21 @@ a { color: var(--accent); }
 #view { flex: none; min-width: 78px; font-size: 13px; }
 #view.on { background: var(--sel); border-color: transparent; }
 #scroll { flex: 1; position: relative; overflow-y: auto; overflow-anchor: none; }
-#conv { max-width: 860px; margin: 0 auto; padding: 20px 64px 30vh 28px; }
+#conv { max-width: calc(860px * var(--scale)); margin: 0 auto; padding: 20px 64px 30vh 28px; font-size: calc(15.5px * var(--scale)); }
+.wide #conv { max-width: none; }
 #main.norail #conv { padding-right: 28px; }
-#empty { color: var(--faint); text-align: center; margin-top: 30vh; }
+/* Home: the mark and the slogan of the social card, whose initials spell "ah", with a cursor that
+   waits for a session. The hint names where the sessions are. */
+#empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 20px 8vh; text-align: center; color: var(--faint); }
 #conv:not(:empty) + #empty { display: none; }
+#empty .logo { width: 72px; height: 66px; }
+.slogan { margin: 26px 0 12px; font: 600 20px/1.4 var(--mono); color: var(--muted); }
+.slogan b { font-weight: inherit; color: var(--logo); }
+.slogan::after { content: ""; display: inline-block; width: .56em; height: .92em; vertical-align: -.15em; background: var(--logo); animation: blink 1.2s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+#hint { margin: 0; font-size: 14px; }
+#hint .menu, .side-closed #hint .left { display: none; }
+.side-closed #hint .menu { display: inline; }
 
 .item { position: relative; margin: 10px 0; scroll-margin-top: 16px; }
 .item.user { display: flex; flex-direction: column; align-items: flex-end; margin-top: 20px; }
@@ -173,7 +186,7 @@ a { color: var(--accent); }
   overflow-wrap: anywhere;
 }
 .prompt.clamp { max-height: 22em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 75%, transparent); mask-image: linear-gradient(#000 75%, transparent); }
-.more { border: none; font-size: 12.5px; color: var(--accent); padding: 2px 8px; }
+.more { border: none; font-size: calc(12.5px * var(--scale)); color: var(--accent); padding: 2px 8px; }
 .item.user .att { max-width: 60%; }
 .att { display: block; max-width: 100%; max-height: 480px; border-radius: 10px; margin: 8px 0; border: 1px solid var(--line); }
 
@@ -184,7 +197,7 @@ a { color: var(--accent); }
   align-items: center;
   height: 24px;
   margin-top: 4px;
-  font-size: 12px;
+  font-size: calc(12px * var(--scale));
   color: var(--faint);
   opacity: 0;
   transition: opacity .15s;
@@ -218,8 +231,8 @@ a { color: var(--accent); }
   overflow-x: auto;
   line-height: 1.5;
 }
-.md pre code, .tool-body pre code { background: none; padding: 0; font-size: 13px; border-radius: 0; }
-.md pre.raw { white-space: pre-wrap; font-family: var(--mono); font-size: 13px; }
+.md pre code, .tool-body pre code { background: none; padding: 0; font-size: calc(13px * var(--scale)); border-radius: 0; }
+.md pre.raw { white-space: pre-wrap; font-family: var(--mono); font-size: calc(13px * var(--scale)); }
 .md blockquote { border-left: 3px solid var(--line); margin-left: 0; padding: .1em 0 .1em 1em; color: var(--muted); }
 .md hr { border: none; border-top: 1px solid var(--line); margin: 1.5em 0; }
 .md img { max-width: 100%; }
@@ -239,7 +252,7 @@ details > summary::-webkit-details-marker { display: none; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13.5px;
+  font-size: calc(13.5px * var(--scale));
   color: var(--muted);
   border-radius: 6px;
   padding: 1px 6px 1px 2px;
@@ -250,7 +263,7 @@ details > summary::-webkit-details-marker { display: none; }
   display: inline-block;
   width: 12px;
   text-align: center;
-  font-size: 15px;
+  font-size: calc(15px * var(--scale));
   transition: transform .12s;
 }
 details[open] > summary::before { transform: rotate(90deg); }
@@ -261,29 +274,29 @@ details[open] > summary::before { transform: rotate(90deg); }
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 13px;
+  font-size: calc(13px * var(--scale));
   padding: 2px 4px 2px 0;
   border-radius: 6px;
   white-space: nowrap;
   overflow: hidden;
 }
-.tool > summary::before { font-size: 13px; color: var(--faint); }
+.tool > summary::before { font-size: calc(13px * var(--scale)); color: var(--faint); }
 .tool > summary:hover { background: var(--hover); }
 .tool > summary b { font-weight: 600; flex: none; }
-.tool > summary code { font-family: var(--mono); font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.tool > summary code { font-family: var(--mono); font-size: calc(12.5px * var(--scale)); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .tool.err > summary b { color: var(--err); }
 .tool.run > summary b::after { content: " …"; color: var(--warn); }
 .tool-body { margin: 4px 0 10px 18px; }
-.tool-body pre { max-height: 520px; overflow: auto; margin: 2px 0 8px; font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.sec-t { font-size: 12px; color: var(--faint); margin-top: 6px; }
+.tool-body pre { max-height: 520px; overflow: auto; margin: 2px 0 8px; font-size: calc(12.5px * var(--scale)); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sec-t { font-size: calc(12px * var(--scale)); color: var(--faint); margin-top: 6px; }
 .sec.err pre { color: var(--err); }
-.cut { font-size: 12px; color: var(--faint); margin-bottom: 8px; }
-.thinking .md { color: var(--muted); font-size: 14px; margin: 4px 0 8px 18px; padding-left: 12px; border-left: 2px solid var(--line); }
+.cut { font-size: calc(12px * var(--scale)); color: var(--faint); margin-bottom: 8px; }
+.thinking .md { color: var(--muted); font-size: calc(14px * var(--scale)); margin: 4px 0 8px 18px; padding-left: 12px; border-left: 2px solid var(--line); }
 
 .item.event { margin: 8px 0; }
-.notice { font-size: 13px; color: var(--faint); }
+.notice { font-size: calc(13px * var(--scale)); color: var(--faint); }
 .notice > span { padding-left: 20px; }
-details.notice .md { font-size: 14px; color: var(--muted); margin: 6px 0 10px 18px; padding-left: 12px; border-left: 2px solid var(--line); }
+details.notice .md { font-size: calc(14px * var(--scale)); color: var(--muted); margin: 6px 0 10px 18px; padding-left: 12px; border-left: 2px solid var(--line); }
 .notice.error, .notice.error > summary { color: var(--err); }
 .notice.compaction, .notice.rewind { text-align: center; margin: 26px 0; }
 .notice.compaction > summary, .notice.rewind > summary, .notice.compaction > span, .notice.rewind > span {
@@ -391,6 +404,17 @@ details.notice .md { font-size: 14px; color: var(--muted); margin: 6px 0 10px 18
 #palette[hidden] { display: none; }
 .pal { width: min(560px, 92vw); max-height: 72vh; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
 #pal-q { font: inherit; font-size: 15px; color: inherit; background: none; border: none; border-bottom: 1px solid var(--line); padding: 12px 16px; outline: none; }
+/* Text size and width: buttons that keep the command list open */
+#pal-set { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.seg { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 9px; }
+.seg button { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 28px; padding: 0 8px; border: none; border-radius: 7px; color: var(--muted); line-height: 1; }
+.seg button:hover { color: var(--fg); }
+.seg button.on { background: var(--sel); color: var(--fg); }
+.seg button:disabled { opacity: .35; background: none; cursor: default; }
+.seg svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+#pal-scale { min-width: 54px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.a-s { font-size: 12px; font-weight: 600; }
+.a-l { font-size: 17px; font-weight: 600; }
 #pal-list { overflow-y: auto; padding: 6px; }
 .cmd { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 10px; border-radius: 8px; font-size: 14px; cursor: pointer; }
 .cmd.sel { background: var(--sel); }
@@ -413,13 +437,15 @@ kbd { font-family: var(--mono); font-size: 12px; min-width: 22px; text-align: ce
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: 600; }
 
-/* Narrow screens: the session list becomes a drawer, and the theme switch moves to the command list */
+/* Narrow screens: the session list becomes a drawer, the theme switch moves to the command list, and
+   the conversation always spans the screen */
 @media (max-width: 860px) {
   #side { position: fixed; z-index: 20; top: 0; bottom: 0; left: 0; width: min(320px, 86vw); transform: translateX(-100%); transition: transform .2s; box-shadow: var(--shadow); }
   .side-open #side { transform: none; }
   .side-closed #side { display: flex; }
   .side-open #main::after { content: ""; position: fixed; inset: 0; z-index: 10; background: var(--backdrop); }
-  #grip, #theme { display: none; }
+  #grip, #theme, #hint .left, .seg.width { display: none; }
+  #hint .menu { display: inline; }
   #top { gap: 6px; padding: 8px 10px; }
   #conv { padding: 16px 36px 30vh 12px; }
   #main.norail #conv { padding-right: 12px; }
@@ -437,4 +463,8 @@ kbd { font-family: var(--mono); font-size: 12px; min-width: 22px; text-align: ce
   #filter, #pal-q { font-size: 16px; }
   .tick { padding: 6px 0; }
   .cmd { padding: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slogan::after { animation: none; }
 }

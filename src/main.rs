@@ -27,7 +27,7 @@ struct Cli {
 enum Cmd {
     /// Serve the web viewer.
     Serve {
-        /// Address to listen on, repeatable. Defaults to this machine's Tailscale address
+        /// Address to listen on, repeatable. Defaults to this machine's Tailscale addresses
         /// and 127.0.0.1.
         #[arg(long = "addr", value_name = "IP:PORT")]
         addrs: Vec<SocketAddr>,
@@ -42,10 +42,11 @@ fn main() -> Result<()> {
     match cli.cmd {
         Some(Cmd::Serve { mut addrs, port }) => {
             if addrs.is_empty() {
-                let Some(ts) = tailscale_ip() else {
+                let ts = tailscale_ips();
+                if ts.is_empty() {
                     bail!("no Tailscale address on this machine; pass --addr IP:PORT to choose where to listen");
-                };
-                addrs = vec![SocketAddr::new(IpAddr::V4(ts), port), SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)];
+                }
+                addrs = ts.into_iter().chain([IpAddr::V4(Ipv4Addr::LOCALHOST)]).map(|ip| SocketAddr::new(ip, port)).collect();
             }
             web::serve(addrs)
         }
@@ -53,10 +54,15 @@ fn main() -> Result<()> {
     }
 }
 
-/// The IPv4 address Tailscale assigned to this machine (from 100.64.0.0/10).
-fn tailscale_ip() -> Option<Ipv4Addr> {
-    if_addrs::get_if_addrs().ok()?.into_iter().find_map(|i| match i.ip() {
-        IpAddr::V4(ip) if ip.octets()[0] == 100 && ip.octets()[1] & 0xc0 == 64 => Some(ip),
-        _ => None,
-    })
+/// The addresses Tailscale assigned to this machine, from 100.64.0.0/10 and fd7a:115c:a1e0::/48.
+/// Its MagicDNS name resolves to both, and browsers try the IPv6 one first.
+fn tailscale_ips() -> Vec<IpAddr> {
+    let ifs = if_addrs::get_if_addrs().unwrap_or_default();
+    ifs.into_iter()
+        .map(|i| i.ip())
+        .filter(|ip| match ip {
+            IpAddr::V4(ip) => ip.octets()[0] == 100 && ip.octets()[1] & 0xc0 == 64,
+            IpAddr::V6(ip) => ip.segments()[..3] == [0xfd7a, 0x115c, 0xa1e0],
+        })
+        .collect()
 }

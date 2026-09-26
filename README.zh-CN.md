@@ -73,7 +73,7 @@ ah path/to.jsonl   # 打开任意记录文件，包括 subagent 的记录
 ah serve
 ```
 
-它监听本机的 Tailscale 地址和 127.0.0.1 的 7447 端口，tailnet 中的任何设备都可以打开 `http://<machine>:7447/`。用 `--addr IP:PORT`（可重复）可以指定其他地址。服务没有登录，所以只响应用 IP 地址、`localhost` 或 Tailscale 名称（`machine` 或 `machine.<tailnet>.ts.net`）访问它的请求，这样网页无法通过 DNS 重绑定（DNS rebinding）访问到它。
+它监听本机的 Tailscale 地址（IPv4 和 IPv6）和 127.0.0.1 的 7447 端口，tailnet 中的任何设备都可以打开 `http://<machine>:7447/`。用 `--addr IP:PORT`（可重复）可以指定其他地址。服务没有登录，所以只响应用 IP 地址、`localhost` 或 Tailscale 名称（`machine` 或 `machine.<tailnet>.ts.net`）访问它的请求，这样网页无法通过 DNS 重绑定（DNS rebinding）访问到它。
 
 页面会渲染 Markdown 和数学公式，折叠工具调用（展开时才加载细节），并实时更新。超过两轮的会话在右侧有一条轮次导航：悬停可以预览每一轮，点击即可跳转。页头的按钮显示当前视图的名称，点击切换到下一个视图：全部（All）、仅对话（Chat）、仅回答（Answers），快捷键分别是 `t` 和 `a`。仅对话视图隐藏工具调用、思考过程和提示信息：
 
@@ -89,7 +89,7 @@ ah serve
   <img src="docs/answers-light.png" alt="仅回答视图：只有提问和最终回答，左侧的会话列表按文件夹分组">
 </picture>
 
-按 `?` 或 Ctrl-K，或点击 ⋯，可以打开命令列表，里面有所有命令和它们的快捷键；输入文字即可筛选，用方向键加 Enter 或者鼠标选择。
+按 `?` 或 Ctrl-K，或点击 ⋯，可以打开命令列表，里面有所有命令和它们的快捷键；输入文字即可筛选，用方向键加 Enter 或者鼠标选择。命令上方的按钮可以调整对话的字号（`+`、`-`），以及在居中的窄栏和铺满窗口的宽屏之间切换（`w`）。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/palette-dark.png">

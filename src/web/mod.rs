@@ -275,8 +275,11 @@ async fn sessions(State(st): State<Shared>) -> Json<serde_json::Value> {
     Json(json!({ "home": home, "sessions": list }))
 }
 
+/// An event stream. Pages cannot see SSE comments, so the keep-alive is a `ping` event: a page
+/// that hears nothing for a while knows the connection is gone and opens a new one.
 fn sse(s: impl Stream<Item = Result<Event, Infallible>> + Send + 'static) -> Response {
-    Sse::new(s).keep_alive(KeepAlive::default()).into_response()
+    // Browsers drop events without data.
+    Sse::new(s).keep_alive(KeepAlive::new().event(Event::default().event("ping").data("1"))).into_response()
 }
 
 /// Session list changes.
