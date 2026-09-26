@@ -22,6 +22,9 @@
 <feDropShadow in="paper" dy="4" stdDeviation="5" flood-color="#000" flood-opacity="0.5" result="lifted"/>
 <feMerge><feMergeNode in="lifted"/><feMergeNode in="SourceGraphic"/></feMerge>
 </filter>
+<filter id="haze" x="-50%" y="-50%" width="200%" height="200%">
+<feGaussianBlur stdDeviation="1.5"/>
+</filter>
 <clipPath id="browser-clip"><rect width="640" height="600" rx="12"/></clipPath>
 <clipPath id="terminal-clip"><rect width="620" height="340" rx="12"/></clipPath>
 <!-- The mark's outline, for cutting it out as a sticker -->
@@ -118,22 +121,38 @@
 <rect x="0.5" y="0.5" width="619" height="339" rx="12" fill="none" stroke="#3a3a3e"/>
 </g>
 
-<!-- Sticker: Clawd, the Claude Code mascot, celebrating with a party popper. The body follows the
-     Claude Code banner (" ▐▛███▜▌" / "▝▜█████▛▘" / "  ▘▘ ▝▝") at four units per block-character pixel
-     across and eight down, which leaves room for happy eyes. -->
-<g transform="translate(1058 478) rotate(9)" filter="url(#sticker)">
-<g transform="scale(4.6) translate(-25.5 -5.5)" shape-rendering="crispEdges">
-<path fill="#d77757" d="M6 0h24v16h-24zM2 8h4v4h-4zM30 8h4v4h-4zM8 16h2v4h-2zM12 16h2v4h-2zM22 16h2v4h-2zM26 16h2v4h-2z"/>
-<path fill="#1c1c1e" d="M8 6h1v1h-1zM9 5h1v1h-1zM10 4h2v1h-2zM12 5h1v1h-1zM13 6h1v1h-1zM22 6h1v1h-1zM23 5h1v1h-1zM24 4h2v1h-2zM26 5h1v1h-1zM27 6h1v1h-1z"/>
-<path fill="#f6c343" d="M33 7h1v1h-1zM33 8h1v1h-1zM34 6h1v1h-1zM34 7h1v1h-1zM34 8h1v1h-1zM35 2h1v1h-1zM35 3h1v1h-1zM35 4h1v1h-1zM35 7h1v1h-1zM36 0h1v1h-1zM36 3h1v1h-1zM36 4h1v1h-1zM36 5h1v1h-1zM37 -1h1v1h-1zM37 0h1v1h-1zM37 1h1v1h-1zM37 4h1v1h-1zM37 5h1v1h-1zM37 6h1v1h-1zM38 0h1v1h-1zM38 1h1v1h-1zM38 2h1v1h-1zM38 5h1v1h-1zM38 6h1v1h-1zM39 1h1v1h-1zM39 2h1v1h-1zM39 3h1v1h-1zM39 6h1v1h-1zM40 2h1v1h-1zM40 3h1v1h-1zM40 4h1v1h-1zM41 3h1v1h-1zM41 4h1v1h-1zM41 5h1v1h-1zM42 4h1v1h-1z"/>
-<path fill="#e8467c" d="M34 5h1v1h-1zM35 5h1v1h-1zM35 6h1v1h-1zM36 1h1v1h-1zM36 2h1v1h-1zM36 6h1v1h-1zM36 7h1v1h-1zM37 2h1v1h-1zM37 3h1v1h-1zM38 3h1v1h-1zM38 4h1v1h-1zM39 4h1v1h-1zM39 5h1v1h-1zM40 5h1v1h-1z"/>
-<path fill="#ffe9a8" d="M37 -2h1v1h-1zM38 -1h1v1h-1zM39 0h1v1h-1zM40 1h1v1h-1zM41 2h1v1h-1zM42 3h1v1h-1zM43 4h1v1h-1z"/>
-<path fill="#2df9c0" d="M40 -6h1v2h-1zM37 -8h1v1h-1z"/>
-<path fill="#ff6fa3" d="M35 -4h2v1h-2zM47 -7h1v1h-1z"/>
-<path fill="#af87ff" d="M44 -5h2v1h-2z"/>
-<path fill="#ffd23f" d="M47 -2h1v2h-1zM42 -9h1v1h-1z"/>
-<path fill="#5ab0ff" d="M48 2h2v1h-2z"/>
-<path fill="#5fd7af" d="M46 5h1v2h-1z"/>
+<!-- Sticker: two Clawds, the Claude Code mascot. The body follows the Claude Code banner
+     (" ▐▛███▜▌" / "▝▜█████▛▘" / "  ▘▘ ▝▝") at four units per block-character pixel across and
+     eight down. On the left, ah's Clawd, a green phantom whose legs fade out, smiles and holds up
+     a document. On the right, the original Clawd looks over at it, raises an arm and has an idea. -->
+<g transform="translate(1046 486) rotate(6)" filter="url(#sticker)">
+<g transform="scale(3.6) translate(-31.5 0.5)" shape-rendering="crispEdges">
+<g transform="translate(0 -2)">
+<path fill="#2df9c0" opacity="0.5" filter="url(#haze)" d="M0 0h24v16h-24zM-4 8h4v4h-4zM24 7h4v4h-4z"/>
+<g fill="#2df9c0" opacity="0.9">
+<path d="M0 0h24v16h-24zM-4 8h4v4h-4zM24 7h4v4h-4z"/>
+<path fill-opacity="0.7" d="M2 16h2v1h-2zM6 16h2v1h-2zM16 16h2v1h-2zM20 16h2v1h-2z"/>
+<path fill-opacity="0.45" d="M2 17h2v1h-2zM6 17h2v1h-2zM16 17h2v1h-2zM20 17h2v1h-2z"/>
+<path fill-opacity="0.22" d="M2 18h2v1h-2zM6 18h2v1h-2zM16 18h2v1h-2zM20 18h2v1h-2z"/>
+<path fill-opacity="0.1" d="M3 19h1v1h-1zM6 19h1v1h-1zM17 19h1v1h-1zM20 19h1v1h-1z"/>
+</g>
+<path fill="#fff" opacity="0.55" d="M1 1h22v15h-22zM-3 9h4v2h-4zM23 8h4v2h-4z"/>
+<path fill="#fff" opacity="0.7" d="M2 2h4v1h-4zM2 3h1v2h-1z"/>
+<path fill="#2df9c0" d="M-8 -3h1v3h-1zM-9 -2h3v1h-3zM-5 -5h1v1h-1z"/>
+<path fill="#1c1c1e" d="M2 6h1v1h-1zM3 5h1v1h-1zM4 4h2v1h-2zM6 5h1v1h-1zM7 6h1v1h-1zM16 6h1v1h-1zM17 5h1v1h-1zM18 4h2v1h-2zM20 5h1v1h-1zM21 6h1v1h-1z"/>
+<path fill="#3a3a3e" d="M26 0h7v1h1v1h1v1h1v11h-10z"/>
+<path fill="#fff" d="M27 1h5v3h3v9h-8z"/>
+<path fill="#d4d4d8" d="M32 1h1v1h1v1h1v1h-3z"/>
+<path fill="#2df9c0" d="M28 2h3v1h-3z"/>
+<path fill="#a1a1aa" d="M28 5h6v1h-6zM28 7h5v1h-5zM28 9h6v1h-6zM28 11h4v1h-4z"/>
+</g>
+<path fill="#d77757" d="M42 0h24v16h-24zM38 -4h4v10h-4zM66 8h4v4h-4zM44 16h2v4h-2zM48 16h2v4h-2zM58 16h2v4h-2zM62 16h2v4h-2z"/>
+<path fill="#1c1c1e" d="M44 4h2v4h-2zM58 4h2v4h-2z"/>
+<path fill="#ffd23f" d="M33 -18h4v1h-4zM32 -17h6v4h-6zM33 -13h4v1h-4zM34 -22h2v2h-2zM30 -20h1v1h-1zM31 -19h1v1h-1zM40 -20h1v1h-1zM39 -19h1v1h-1zM28 -15h2v1h-2zM40 -15h2v1h-2z"/>
+<path fill="#f6a623" d="M37 -16h1v3h-1zM36 -13h1v1h-1z"/>
+<path fill="#fff" d="M33 -16h1v2h-1z"/>
+<path fill="#a1a1aa" d="M33 -12h4v1h-4zM34 -10h2v1h-2z"/>
+<path fill="#71717a" d="M33 -11h4v1h-4z"/>
 </g>
 </g>
 </svg>
