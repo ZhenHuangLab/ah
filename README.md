@@ -203,8 +203,7 @@ Tailscale address.
 To sign in, run `ah login` on the machine. It prints a link, with a QR code for a
 phone, that works for 10 minutes; a browser that opens it and confirms stays
 signed in for 30 days. A browser on the tailnet, or one already signed in, shows such a link for
-another device with "Sign in on another device" in the command list. Deleting
-`~/.local/share/ah/key` and restarting `ah serve` signs every browser out.
+another device with "Sign in on another device" in the command list.
 
 ### Sharing a session
 
@@ -225,6 +224,13 @@ engines are asked not to index it. The share dialog lists the session's open lin
 and stops them; `ah share list` and `ah share stop <id>` do the same for all
 sessions. Each link's snapshot is kept in `~/.local/share/ah/shares`, so it stays
 readable after the agent deletes the transcript, for as long as `ah serve` runs.
+
+### Security
+
+Share links grant access to their snapshots; login links grant access to all
+sessions. Login links can be reused for 10 minutes, and signed-in browsers can
+create new ones. Delete `~/.local/share/ah/key` and restart `ah serve` to revoke
+all logins. Stopping a share link cannot remove copies readers have saved.
 
 ## Where sessions come from
 

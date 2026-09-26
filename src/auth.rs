@@ -5,6 +5,7 @@
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Write};
 use std::os::unix::fs::OpenOptionsExt;
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use base64::Engine;
@@ -53,7 +54,7 @@ impl Key {
     }
 
     pub fn check_login(&self, token: &str) -> bool {
-        self.check("login", token)
+        self.check("login", token).is_some()
     }
 
     /// The value of a new session cookie.
@@ -61,7 +62,8 @@ impl Key {
         self.sign("session", now() + SESSION_SECS)
     }
 
-    pub fn check_session(&self, token: &str) -> bool {
+    /// Verifies the session and returns how long its requests may remain open.
+    pub fn session_remaining(&self, token: &str) -> Option<Duration> {
         self.check("session", token)
     }
 
@@ -75,13 +77,75 @@ impl Key {
         format!("{exp}.{}", URL_SAFE_NO_PAD.encode(self.mac(purpose, exp).finalize().into_bytes()))
     }
 
-    fn check(&self, purpose: &str, token: &str) -> bool {
-        let Some((exp, sig)) = token.split_once('.') else { return false };
-        let (Ok(exp), Ok(sig)) = (exp.parse::<i64>(), URL_SAFE_NO_PAD.decode(sig)) else { return false };
-        exp > now() && self.mac(purpose, exp).verify_slice(&sig).is_ok()
+    fn check(&self, purpose: &str, token: &str) -> Option<Duration> {
+        let (exp, sig) = token.split_once('.')?;
+        let exp = exp.parse::<i64>().ok()?;
+        let sig = URL_SAFE_NO_PAD.decode(sig).ok()?;
+        self.mac(purpose, exp).verify_slice(&sig).ok()?;
+        let expires = jiff::Timestamp::from_second(exp).ok()?;
+        let remaining = Duration::try_from(expires.duration_since(jiff::Timestamp::now())).ok()?;
+        (!remaining.is_zero()).then_some(remaining)
     }
 }
 
 fn now() -> i64 {
     jiff::Timestamp::now().as_second()
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+
+    pub fn key() -> Key {
+        Key(vec![0x42; 32])
+    }
+
+    #[test]
+    fn tokens_are_bound_to_their_purpose_and_key() {
+        let key = key();
+        let login = key.sign("login", now() + LINK_SECS);
+        let session = key.session();
+        assert!(key.check_login(&login));
+        assert!(key.session_remaining(&login).is_none());
+        assert!(!key.check_login(&session));
+        assert!(key.session_remaining(&session).is_some());
+
+        let other = Key(vec![0x43; 32]);
+        assert!(!other.check_login(&login));
+        assert!(other.session_remaining(&session).is_none());
+    }
+
+    #[test]
+    fn expired_tokens_are_rejected_at_the_boundary() {
+        let key = key();
+        for exp in [now() - 1, now()] {
+            assert!(!key.check_login(&key.sign("login", exp)));
+            assert!(key.session_remaining(&key.sign("session", exp)).is_none());
+        }
+        let remaining = key.session_remaining(&key.session()).unwrap();
+        assert!(!remaining.is_zero());
+        assert!(remaining <= Duration::from_secs(SESSION_SECS as u64));
+    }
+
+    #[test]
+    fn changing_expiry_or_signature_does_not_extend_access() {
+        let key = key();
+        let token = key.session();
+        let (exp, sig) = token.split_once('.').unwrap();
+        let later = exp.parse::<i64>().unwrap() + SESSION_SECS;
+        assert!(key.session_remaining(&format!("{later}.{sig}")).is_none());
+
+        let mut sig = URL_SAFE_NO_PAD.decode(sig).unwrap();
+        sig[0] ^= 1;
+        assert!(key.session_remaining(&format!("{exp}.{}", URL_SAFE_NO_PAD.encode(sig))).is_none());
+    }
+
+    #[test]
+    fn malformed_tokens_are_rejected() {
+        let key = key();
+        for token in ["", "1", ".", "invalid.signature", "9223372036854775808.AA", "9999999999.AA", "9999999999.%%%"] {
+            assert!(!key.check_login(token));
+            assert!(key.session_remaining(token).is_none());
+        }
+    }
 }

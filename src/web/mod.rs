@@ -3,6 +3,8 @@
 
 mod public;
 pub mod render;
+#[cfg(test)]
+mod tests;
 
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
@@ -14,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use axum::extract::{Path, Query, Request, State};
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
@@ -117,6 +119,31 @@ async fn run(addrs: Vec<SocketAddr>, public: Option<Arc<Access>>) -> Result<()> 
     let st = Arc::new(AppState { roots, index: RwLock::new(index), open: Mutex::new(HashMap::new()), tx, public: public.clone() });
     watch(st.clone())?;
 
+    let (app, public_app) = routers(st);
+    let mut listeners = Vec::new();
+    for addr in addrs {
+        listeners.push((addr, app.clone()));
+    }
+    if let Some(app) = public_app {
+        listeners.push((SocketAddr::from((Ipv4Addr::LOCALHOST, public::PORT)), app));
+    }
+    if let Some(access) = public {
+        eprintln!("ah: https://{} reaches the listener on port {} through the tunnel", access.host, public::PORT);
+    }
+
+    let mut servers = Vec::new();
+    for (addr, app) in listeners {
+        let listener = tokio::net::TcpListener::bind(addr).await.with_context(|| format!("listening on {addr}"))?;
+        eprintln!("ah: serving http://{addr}/");
+        servers.push(tokio::spawn(async move { axum::serve(listener, app).await }));
+    }
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => Ok(()),
+        (res, _, _) = futures_util::future::select_all(servers) => Ok(res??),
+    }
+}
+
+fn routers(st: Shared) -> (Router, Option<Router>) {
     // Everything the owner sees; on the public listener it needs the cookie of a login link.
     let owner = Router::new()
         .route("/", get(|| async { asset("index.html") }))
@@ -132,32 +159,28 @@ async fn run(addrs: Vec<SocketAddr>, public: Option<Arc<Access>>) -> Result<()> 
         .route("/api/login-link", get(login_link));
     let assets = Router::new().route("/assets/{*path}", get(|Path(p): Path<String>| async move { asset(&p) }));
 
-    let app =
-        owner.clone().merge(assets.clone()).layer(CompressionLayer::new()).layer(middleware::from_fn(check_host)).with_state(st.clone());
-    let mut listeners = Vec::new();
-    for addr in addrs {
-        listeners.push((addr, app.clone()));
-    }
-    if let Some(access) = public {
-        let app = public::open(access.clone())
-            .merge(owner.route_layer(middleware::from_fn_with_state(access.clone(), public::signed_in)))
+    let local = owner
+        .clone()
+        .layer(middleware::from_fn(no_store))
+        .merge(assets.clone())
+        .layer(CompressionLayer::new())
+        .layer(middleware::from_fn(check_host))
+        .with_state(st.clone());
+    let public = st.public.clone().map(|access| {
+        public::open(access.clone())
+            .merge(owner.route_layer(middleware::from_fn_with_state(access, public::signed_in)).layer(middleware::from_fn(no_store)))
             .merge(assets)
             .layer(CompressionLayer::new())
-            .with_state(st);
-        listeners.push((SocketAddr::from((Ipv4Addr::LOCALHOST, public::PORT)), app));
-        eprintln!("ah: https://{} reaches the listener on port {} through the tunnel", access.host, public::PORT);
-    }
+            .with_state(st)
+    });
+    (local, public)
+}
 
-    let mut servers = Vec::new();
-    for (addr, app) in listeners {
-        let listener = tokio::net::TcpListener::bind(addr).await.with_context(|| format!("listening on {addr}"))?;
-        eprintln!("ah: serving http://{addr}/");
-        servers.push(tokio::spawn(async move { axum::serve(listener, app).await }));
-    }
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => Ok(()),
-        (res, _, _) = futures_util::future::select_all(servers) => Ok(res??),
-    }
+/// Private data and revocable links must be checked at the server on every request.
+async fn no_store(req: Request, next: Next) -> Response {
+    let mut response = next.run(req).await;
+    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
+    response
 }
 
 /// Refuses requests that name this server by a host name someone else could control. The API
@@ -431,11 +454,7 @@ async fn image(
         let live = st.live(&id)?;
         let l = live.lock().unwrap();
         let (mime, bytes) = l.t.items.get(i).and_then(|it| render::image(it, b, q.k)).ok_or(StatusCode::NOT_FOUND)?;
-        let headers = [
-            (header::CONTENT_TYPE, mime),
-            (header::CACHE_CONTROL, "public, max-age=86400".into()),
-            (header::X_CONTENT_TYPE_OPTIONS, "nosniff".into()),
-        ];
+        let headers = [(header::CONTENT_TYPE, mime), (header::X_CONTENT_TYPE_OPTIONS, "nosniff".into())];
         Ok((headers, bytes).into_response())
     })
     .await

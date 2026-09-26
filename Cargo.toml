@@ -20,7 +20,7 @@ notify = "8.2.0"
 pulldown-cmark = "0.13.4"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 ratatui = "0.30.2"
-rust-embed = { version = "8.12.0", features = ["mime-guess"] }
+rust-embed = { version = "8.12.0", features = ["mime-guess", "debug-embed"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
@@ -29,6 +29,10 @@ toml = "1.1.6"
 tower-http = { version = "0.7.1", features = ["compression-gzip"] }
 unicode-linebreak = "0.1.5"
 unicode-width = "0.2.2"
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["test-util"] }
+tower = { version = "0.5.3", features = ["util"] }
 
 [profile.release]
 lto = "thin"

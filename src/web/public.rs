@@ -3,16 +3,19 @@
 
 use std::sync::Arc;
 
+use axum::body::Body;
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::{Form, Json, Router};
+use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::json;
+use tokio::time::{Instant, sleep_until, timeout_at};
 
-use super::{Assets, Shared};
+use super::{Assets, Shared, no_store};
 use crate::auth::{COOKIE, Key, SESSION_SECS};
 use crate::markdown::escape;
 use crate::share;
@@ -31,20 +34,26 @@ pub fn open(access: Arc<Access>) -> Router<Shared> {
     Router::new()
         .route("/s/{id}", get(share_page))
         .route("/api/share/{id}", get(share_json))
+        .route("/login", get(confirm_login).post(login))
+        .layer(axum::middleware::from_fn(no_store))
         .route(
             "/og.png",
             get(|| async { ([(header::CONTENT_TYPE, "image/png")], include_bytes!("../../docs/social-preview.png").as_slice()) }),
         )
         .route("/robots.txt", get(|| async { "User-agent: *\nDisallow: /\n" }))
-        .route("/login", get(confirm_login).post(login))
         .with_state(access)
 }
 
-/// Lets requests through when they carry the session cookie.
+/// The session must cover both the request and the entire response, including event streams.
 pub async fn signed_in(State(access): State<Arc<Access>>, req: Request, next: Next) -> Response {
-    if cookie(req.headers()).is_some_and(|c| access.key.check_session(c)) {
-        return next.run(req).await;
-    }
+    let Some(remaining) = cookie(req.headers()).and_then(|c| access.key.session_remaining(c)) else { return unauthorized() };
+    let deadline = Instant::now() + remaining;
+    let Ok(response) = timeout_at(deadline, next.run(req)).await else { return unauthorized() };
+    let (parts, body) = response.into_parts();
+    Response::from_parts(parts, Body::from_stream(body.into_data_stream().take_until(sleep_until(deadline))))
+}
+
+fn unauthorized() -> Response {
     page(StatusCode::UNAUTHORIZED, "<p>Sign in with a link from <code>ah login</code>, run on the machine that serves ah.</p>")
 }
 
@@ -74,7 +83,7 @@ async fn confirm_login(State(access): State<Arc<Access>>, Query(q): Query<LoginQ
         escape(&access.host),
         escape(&q.t)
     );
-    ([(header::CACHE_CONTROL, "no-store")], page(StatusCode::OK, &form)).into_response()
+    page(StatusCode::OK, &form)
 }
 
 async fn login(State(access): State<Arc<Access>>, Form(q): Form<LoginQuery>) -> Response {
@@ -130,7 +139,7 @@ async fn share_page(State(access): State<Arc<Access>>, Path(id): Path<String>) -
             StatusCode::NOT_FOUND
         }
     };
-    (status, [NOINDEX, (header::CACHE_CONTROL, "no-cache")], Html(index.replacen("<title>ah</title>", &head, 1))).into_response()
+    (status, [NOINDEX], Html(index.replacen("<title>ah</title>", &head, 1))).into_response()
 }
 
 async fn share_json(Path(id): Path<String>) -> Response {
