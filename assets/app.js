@@ -8,6 +8,8 @@ const LIVE_MS = 2 * 60 * 1000;
 const SILENT_MS = 45 * 1000;
 // Text sizes of the conversation, as factors of the default.
 const SCALES = [0.8, 0.9, 1, 1.1, 1.2, 1.35, 1.5];
+// The narrowest the session list gets by dragging its edge.
+const SIDE_MIN = 220;
 const ICON_COPY = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/>' +
   '<path d="M10.5 5.5V4.3a1.8 1.8 0 0 0-1.8-1.8H4.3a1.8 1.8 0 0 0-1.8 1.8v4.4a1.8 1.8 0 0 0 1.8 1.8h1.2"/></svg>';
 const ICON_DONE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
@@ -968,7 +970,10 @@ function route() {
   open(id, target);
 }
 
-/** Dragging the edge of the session list sets its width; a double click resets it. */
+/**
+ * Dragging the edge of the session list sets its width, and dragging it well past its narrowest
+ * width hides the list until the drag comes back; a double click resets the width.
+ */
 function wireGrip() {
   const grip = $('#grip');
   grip.addEventListener('pointerdown', e => {
@@ -978,7 +983,10 @@ function wireGrip() {
     root.classList.add('resizing');
     let w = 0;
     const move = ev => {
-      w = Math.round(Math.max(220, Math.min(ev.clientX, 640, innerWidth * 0.6)));
+      const hide = ev.clientX < SIDE_MIN / 2;
+      if (hide !== root.classList.contains('side-closed')) toggleSide(!hide);
+      if (hide) return;
+      w = Math.round(Math.max(SIDE_MIN, Math.min(ev.clientX, 640, innerWidth * 0.6)));
       root.style.setProperty('--side-w', w + 'px');
     };
     grip.addEventListener('pointermove', move);

@@ -71,17 +71,19 @@ button:hover { background: var(--hover); }
 button.icon { border: none; padding: 4px 8px; font-size: 16px; line-height: 1; }
 a { color: var(--accent); }
 
-/* Session list: hidden with ☰ or s, resized by dragging its edge */
+/* Session list: hidden with the menu button, s, or by dragging its edge past its narrowest width;
+   it slides out to the left and stays in the page so the slide can play */
 #side {
   width: var(--side-w, 300px);
   flex: none;
+  transition: margin-left .2s ease;
   position: relative;
   display: flex;
   flex-direction: column;
   background: var(--side);
   border-right: 1px solid var(--line);
 }
-.side-closed #side { display: none; }
+.side-closed #side { margin-left: calc(-1 * var(--side-w, 300px)); visibility: hidden; transition: margin-left .2s ease, visibility 0s .2s; }
 #grip { position: absolute; top: 0; bottom: 0; right: -4px; width: 8px; cursor: col-resize; z-index: 3; }
 #grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; transition: background .15s; }
 #grip:hover::after, .resizing #grip::after { background: var(--accent); }
@@ -89,6 +91,10 @@ a { color: var(--accent); }
 .side-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 6px; }
 /* The pixel mark, a whole number of CSS pixels per cell so it stays sharp; its color follows the theme */
 .logo { flex: none; width: 24px; height: 22px; background: var(--logo); mask: url(logo.svg) center / contain no-repeat; }
+/* The menu button shows ☰ while the list is hidden and a close mark while it shows */
+#menu svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+#menu .shut, .side-closed #menu svg { display: none; }
+.side-closed #menu .shut { display: inline; }
 #filter {
   flex: 1;
   min-width: 0;
@@ -442,7 +448,9 @@ kbd { font-family: var(--mono); font-size: 12px; min-width: 22px; text-align: ce
 @media (max-width: 860px) {
   #side { position: fixed; z-index: 20; top: 0; bottom: 0; left: 0; width: min(320px, 86vw); transform: translateX(-100%); transition: transform .2s; box-shadow: var(--shadow); }
   .side-open #side { transform: none; }
-  .side-closed #side { display: flex; }
+  .side-closed #side { margin-left: 0; visibility: visible; transition: transform .2s; }
+  #menu svg { display: none; }
+  #menu .shut { display: inline; }
   .side-open #main::after { content: ""; position: fixed; inset: 0; z-index: 10; background: var(--backdrop); }
   #grip, #theme, #hint .left, .seg.width { display: none; }
   #hint .menu { display: inline; }

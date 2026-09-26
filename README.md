@@ -122,8 +122,10 @@ switch between a centered column and the full width of the window (`w`).
 </picture>
 
 The session list is grouped by date, or by folder under headers that open and
-close ("By date" switches). ☰ or `s` hides it, and dragging its edge changes its
-width. On a phone it opens as a drawer.
+close ("By date" switches). The button at the top left or `s` hides and shows it,
+and dragging its edge changes its width; dragging the edge most of the way to the
+left hides it. The mark above it links to this repository. On a phone it opens as
+a drawer.
 
 Copying a selection gives Markdown: formulas as TeX, code as fenced blocks, and
 lists, tables and emphasis in Markdown syntax. The copy icon under a message
