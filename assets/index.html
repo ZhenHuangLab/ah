@@ -57,14 +57,14 @@
 </aside>
 <main id="main">
   <header id="top">
-    <button id="menu" class="icon" title="Show or hide the sessions (s)"><span class="shut">☰</span><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.8"/><path d="M6 2.5v11M11 6l-2 2 2 2"/></svg></button>
+    <button id="menu" class="icon" title="Show or hide the sessions (s)"><span class="min shut">☰</span><svg class="min open" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.8"/><path d="M6 2.5v11M11 6l-2 2 2 2"/></svg><svg class="pix open" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 2h14v1h-14zM1 3h1v1h-1zM5 3h1v1h-1zM14 3h1v1h-1zM1 4h1v1h-1zM5 4h1v1h-1zM14 4h1v1h-1zM1 5h1v1h-1zM5 5h1v1h-1zM10 5h2v1h-2zM14 5h1v1h-1zM1 6h1v1h-1zM5 6h1v1h-1zM9 6h2v1h-2zM14 6h1v1h-1zM1 7h1v1h-1zM5 7h1v1h-1zM8 7h2v1h-2zM14 7h1v1h-1zM1 8h1v1h-1zM5 8h1v1h-1zM8 8h2v1h-2zM14 8h1v1h-1zM1 9h1v1h-1zM5 9h1v1h-1zM9 9h2v1h-2zM14 9h1v1h-1zM1 10h1v1h-1zM5 10h1v1h-1zM10 10h2v1h-2zM14 10h1v1h-1zM1 11h1v1h-1zM5 11h1v1h-1zM14 11h1v1h-1zM1 12h1v1h-1zM5 12h1v1h-1zM14 12h1v1h-1zM1 13h14v1h-14z"/></svg><svg class="pix shut" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v1h-12zM2 4h12v1h-12zM2 7h12v1h-12zM2 8h12v1h-12zM2 11h12v1h-12zM2 12h12v1h-12z"/></svg></button>
     <div class="heading">
       <h1 id="title">ah</h1>
       <div id="sub"></div>
     </div>
     <button id="view" class="icon"></button>
-    <button id="share" class="icon" title="Share this session" aria-label="Share this session" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 10V2.5M5.3 5.2 8 2.5l2.7 2.7M5 7.5h-.7c-.9 0-1.6.7-1.6 1.6v3.3c0 .9.7 1.6 1.6 1.6h7.4c.9 0 1.6-.7 1.6-1.6V9.1c0-.9-.7-1.6-1.6-1.6H11"/></svg></button>
-    <button id="cmds" class="icon" title="Commands and shortcuts (?)">⋯</button>
+    <button id="share" class="icon" title="Share this session" aria-label="Share this session" hidden><svg class="min" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 10V2.5M5.3 5.2 8 2.5l2.7 2.7M5 7.5h-.7c-.9 0-1.6.7-1.6 1.6v3.3c0 .9.7 1.6 1.6 1.6h7.4c.9 0 1.6-.7 1.6-1.6V9.1c0-.9-.7-1.6-1.6-1.6H11"/></svg><svg class="pix" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2h2v1h-2zM6 3h4v1h-4zM5 4h6v1h-6zM7 5h2v1h-2zM7 6h2v1h-2zM2 7h3v1h-3zM7 7h2v1h-2zM11 7h3v1h-3zM2 8h1v1h-1zM7 8h2v1h-2zM13 8h1v1h-1zM2 9h1v1h-1zM7 9h2v1h-2zM13 9h1v1h-1zM2 10h1v1h-1zM13 10h1v1h-1zM2 11h1v1h-1zM13 11h1v1h-1zM2 12h12v1h-12z"/></svg></button>
+    <button id="cmds" class="icon" title="Commands and shortcuts (?)" aria-label="Commands and shortcuts"><span class="min">⋯</span><svg class="pix" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 7h2v1h-2zM7 7h2v1h-2zM13 7h2v1h-2zM1 8h2v1h-2zM7 8h2v1h-2zM13 8h2v1h-2z"/></svg></button>
   </header>
   <div id="scroll">
     <div id="conv"></div>
@@ -90,12 +90,12 @@
         <button tabindex="-1" data-scale="1" title="Larger text (+)" aria-label="Larger text"><span class="a-l">A</span></button>
       </div>
       <div class="seg slide width" role="group" aria-label="Width">
-        <button tabindex="-1" data-wide="0" title="Centered column (w)" aria-label="Centered column"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.8"/><path d="M5.5 6h5M5.5 8h5M5.5 10h3"/></svg></button>
-        <button tabindex="-1" data-wide="1" title="Full width (w)" aria-label="Full width"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.8"/><path d="M3.5 6h9M3.5 8h9M3.5 10h6"/></svg></button>
+        <button tabindex="-1" data-wide="0" title="Centered column (w)" aria-label="Centered column"><svg class="min" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.8"/><path d="M5.5 6h5M5.5 8h5M5.5 10h3"/></svg><svg class="pix" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 3h14v1h-14zM1 4h1v1h-1zM14 4h1v1h-1zM1 5h1v1h-1zM14 5h1v1h-1zM1 6h1v1h-1zM5 6h6v1h-6zM14 6h1v1h-1zM1 7h1v1h-1zM14 7h1v1h-1zM1 8h1v1h-1zM5 8h6v1h-6zM14 8h1v1h-1zM1 9h1v1h-1zM14 9h1v1h-1zM1 10h1v1h-1zM5 10h4v1h-4zM14 10h1v1h-1zM1 11h1v1h-1zM14 11h1v1h-1zM1 12h14v1h-14z"/></svg></button>
+        <button tabindex="-1" data-wide="1" title="Full width (w)" aria-label="Full width"><svg class="min" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.8"/><path d="M3.5 6h9M3.5 8h9M3.5 10h6"/></svg><svg class="pix" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 3h14v1h-14zM1 4h1v1h-1zM14 4h1v1h-1zM1 5h1v1h-1zM14 5h1v1h-1zM1 6h1v1h-1zM3 6h10v1h-10zM14 6h1v1h-1zM1 7h1v1h-1zM14 7h1v1h-1zM1 8h1v1h-1zM3 8h10v1h-10zM14 8h1v1h-1zM1 9h1v1h-1zM14 9h1v1h-1zM1 10h1v1h-1zM3 10h6v1h-6zM14 10h1v1h-1zM1 11h1v1h-1zM14 11h1v1h-1zM1 12h14v1h-14z"/></svg></button>
       </div>
       <div class="seg slide" role="group" aria-label="Theme">
-        <button tabindex="-1" data-theme="light" title="Light" aria-label="Light"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.8"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/></svg></button>
-        <button tabindex="-1" data-theme="dark" title="Dark" aria-label="Dark"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 10.1A5.6 5.6 0 0 1 5.9 2.8a5.6 5.6 0 1 0 7.3 7.3z"/></svg></button>
+        <button tabindex="-1" data-theme="light" title="Light" aria-label="Light"><svg class="min" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.8"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/></svg><svg class="pix" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 1h2v1h-2zM7 2h2v1h-2zM2 3h2v1h-2zM12 3h2v1h-2zM2 4h2v1h-2zM12 4h2v1h-2zM6 5h4v1h-4zM5 6h6v1h-6zM1 7h2v1h-2zM5 7h6v1h-6zM13 7h2v1h-2zM1 8h2v1h-2zM5 8h6v1h-6zM13 8h2v1h-2zM5 9h6v1h-6zM6 10h4v1h-4zM2 11h2v1h-2zM12 11h2v1h-2zM2 12h2v1h-2zM12 12h2v1h-2zM7 13h2v1h-2zM7 14h2v1h-2z"/></svg></button>
+        <button tabindex="-1" data-theme="dark" title="Dark" aria-label="Dark"><svg class="min" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 10.1A5.6 5.6 0 0 1 5.9 2.8a5.6 5.6 0 1 0 7.3 7.3z"/></svg><svg class="pix" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2h3v1h-3zM4 3h3v1h-3zM3 4h3v1h-3zM2 5h3v1h-3zM2 6h3v1h-3zM2 7h3v1h-3zM2 8h4v1h-4zM2 9h5v1h-5zM14 9h1v1h-1zM3 10h6v1h-6zM12 10h3v1h-3zM3 11h11v1h-11zM4 12h9v1h-9zM6 13h5v1h-5z"/></svg></button>
       </div>
       <div class="seg slide" role="group" aria-label="Style">
         <button tabindex="-1" data-look="minimal" title="Minimal style" aria-label="Minimal style"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="3.2"/></svg></button>

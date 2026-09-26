@@ -10,9 +10,13 @@ const SILENT_MS = 45 * 1000;
 const SCALES = [0.8, 0.9, 1, 1.1, 1.2, 1.35, 1.5];
 // The narrowest the session list gets by dragging its edge.
 const SIDE_MIN = 220;
-const ICON_COPY = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/>' +
-  '<path d="M10.5 5.5V4.3a1.8 1.8 0 0 0-1.8-1.8H4.3a1.8 1.8 0 0 0-1.8 1.8v4.4a1.8 1.8 0 0 0 1.8 1.8h1.2"/></svg>';
-const ICON_DONE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
+// Icons come in two drawings: .min for the minimal style, and .pix in whole pixels for the pixel style.
+const pixelIcon = d => `<svg class="pix" viewBox="0 0 16 16" aria-hidden="true"><path d="${d}"/></svg>`;
+const ICON_COPY = '<svg class="min" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/>' +
+  '<path d="M10.5 5.5V4.3a1.8 1.8 0 0 0-1.8-1.8H4.3a1.8 1.8 0 0 0-1.8 1.8v4.4a1.8 1.8 0 0 0 1.8 1.8h1.2"/></svg>' +
+  pixelIcon('M2 2h9v1h-9zM2 3h1v1h-1zM10 3h1v1h-1zM2 4h1v1h-1zM10 4h1v1h-1zM2 5h1v1h-1zM5 5h9v1h-9zM2 6h1v1h-1zM5 6h1v1h-1zM13 6h1v1h-1zM2 7h1v1h-1zM5 7h1v1h-1zM13 7h1v1h-1zM2 8h1v1h-1zM5 8h1v1h-1zM13 8h1v1h-1zM2 9h1v1h-1zM5 9h1v1h-1zM13 9h1v1h-1zM2 10h4v1h-4zM13 10h1v1h-1zM5 11h1v1h-1zM13 11h1v1h-1zM5 12h1v1h-1zM13 12h1v1h-1zM5 13h9v1h-9z');
+const ICON_DONE = '<svg class="min" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg>' +
+  pixelIcon('M12 4h2v1h-2zM11 5h2v1h-2zM10 6h2v1h-2zM9 7h2v1h-2zM2 8h2v1h-2zM8 8h2v1h-2zM3 9h2v1h-2zM7 9h2v1h-2zM4 10h4v1h-4zM5 11h2v1h-2z');
 const VIEWS = ['all', 'chat', 'answers'];
 const VIEW_NAMES = { all: 'All', chat: 'Chat', answers: 'Answers' };
 // Everything as rows of messages and tool calls; the chat as a speech bubble; answers as a bubble
@@ -22,6 +26,11 @@ const VIEW_ICONS = {
   all: 'M2.5 3.5h11M2.5 6.5h11M5 9.5h8.5M5 12.5h8.5M2.5 9.5h.5M2.5 12.5h.5',
   chat: BUBBLE,
   answers: BUBBLE + 'M5.5 7.3l1.7 1.7 3.3-3.3',
+};
+const VIEW_PIXELS = {
+  all: 'M1 3h14v1h-14zM1 6h14v1h-14zM1 9h2v1h-2zM4 9h11v1h-11zM1 12h2v1h-2zM4 12h11v1h-11z',
+  chat: 'M2 2h12v1h-12zM1 3h1v1h-1zM14 3h1v1h-1zM1 4h1v1h-1zM14 4h1v1h-1zM1 5h1v1h-1zM14 5h1v1h-1zM1 6h1v1h-1zM14 6h1v1h-1zM1 7h1v1h-1zM14 7h1v1h-1zM1 8h1v1h-1zM14 8h1v1h-1zM1 9h1v1h-1zM14 9h1v1h-1zM2 10h12v1h-12zM3 11h2v1h-2zM3 12h1v1h-1z',
+  answers: 'M2 2h12v1h-12zM1 3h1v1h-1zM14 3h1v1h-1zM1 4h1v1h-1zM14 4h1v1h-1zM1 5h1v1h-1zM11 5h1v1h-1zM14 5h1v1h-1zM1 6h1v1h-1zM10 6h1v1h-1zM14 6h1v1h-1zM1 7h1v1h-1zM6 7h1v1h-1zM9 7h1v1h-1zM14 7h1v1h-1zM1 8h1v1h-1zM7 8h2v1h-2zM14 8h1v1h-1zM1 9h1v1h-1zM14 9h1v1h-1zM2 10h12v1h-12zM3 11h2v1h-2zM3 12h1v1h-1z',
 };
 const VIEW_HELP = {
   all: 'Everything, with tool calls folded. Click for chat only (t)',
@@ -787,7 +796,7 @@ function renderSettings() {
 /** The header button names the current view and switches to the next one. */
 function renderViewButton() {
   const b = $('#view');
-  b.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${VIEW_ICONS[S.view]}"/></svg>`;
+  b.innerHTML = `<svg class="min" viewBox="0 0 16 16" aria-hidden="true"><path d="${VIEW_ICONS[S.view]}"/></svg>` + pixelIcon(VIEW_PIXELS[S.view]);
   b.title = VIEW_HELP[S.view];
   b.setAttribute('aria-label', VIEW_HELP[S.view]);
   b.classList.toggle('on', S.view !== 'all');

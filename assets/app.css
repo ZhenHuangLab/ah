@@ -69,6 +69,11 @@ button {
 }
 button:hover { background: var(--hover); }
 button.icon { border: none; padding: 4px 8px; font-size: 16px; line-height: 1; }
+/* Buttons in the header are squares with their icon in the middle */
+#top button.icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; }
+/* Icons come in two drawings: .min for the minimal style, and .pix in whole pixels for the pixel style */
+:root:not([data-style=pixel]) .pix, [data-style=pixel] .min { display: none !important; }
+#top svg.pix, .seg svg.pix, .acts svg.pix { width: 16px; height: 16px; fill: currentColor; stroke: none; shape-rendering: crispEdges; }
 a { color: var(--accent); }
 
 /* Session list: hidden with the menu button, s, or by dragging its edge past its narrowest width;
@@ -92,9 +97,9 @@ a { color: var(--accent); }
 /* The pixel mark, a whole number of CSS pixels per cell so it stays sharp; its color follows the theme */
 .logo { flex: none; width: 24px; height: 22px; background: var(--logo); mask: url(logo.svg) center / contain no-repeat; }
 /* The menu button shows ☰ while the list is hidden and a close mark while it shows */
-#menu svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
-#menu .shut, .side-closed #menu svg { display: none; }
-.side-closed #menu .shut { display: inline; }
+#menu svg.min { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+#menu .shut, .side-closed #menu .open { display: none; }
+.side-closed #menu .shut { display: block; }
 #filter {
   flex: 1;
   min-width: 0;
@@ -469,8 +474,8 @@ kbd { font-family: var(--mono); font-size: 12px; min-width: 22px; text-align: ce
   #side { position: fixed; z-index: 20; top: 0; bottom: 0; left: 0; width: min(320px, 86vw); transform: translateX(-100%); transition: transform .2s; box-shadow: var(--shadow); }
   .side-open #side { transform: none; }
   .side-closed #side { margin-left: 0; visibility: visible; transition: transform .2s; }
-  #menu svg { display: none; }
-  #menu .shut { display: inline; }
+  #menu .open { display: none; }
+  #menu .shut { display: block; }
   .side-open #main::after { content: ""; position: fixed; inset: 0; z-index: 10; background: var(--backdrop); }
   #grip, #hint .left, .seg.width { display: none; }
   #hint .menu { display: inline; }
