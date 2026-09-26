@@ -5,8 +5,8 @@
 <h1 align="center">ah</h1>
 
 <p align="center">
-  Agent history: read Claude Code, Codex and pi sessions in the terminal or in a
-  browser on another machine.
+  Agent history: read and share Claude Code, Codex and pi sessions, in the terminal
+  or in a browser anywhere.
 </p>
 
 <p align="center">
@@ -81,6 +81,7 @@ In a session:
 | `e` | expand or collapse all |
 | `/` `n` `N` | search |
 | `y` | copy the message, or the focused tool call |
+| `s` | share the chat or the answers by a link (see [Sharing a session](#sharing-a-session)) |
 | drag | select text and copy it |
 | `q` | back to the list |
 
@@ -109,8 +110,9 @@ from reaching it through DNS rebinding.
 The page renders Markdown and math, folds tool calls (details load when opened),
 and updates live. Sessions of more than two turns get a rail of their turns on
 the right that previews each turn on hover and jumps on click. The button in the
-header names the current view and switches to the next: everything, chat only,
-answers only (`t`, `a`). Chat only hides tool calls, thinking and notices:
+header shows the current view as an icon (rows, a speech bubble, a bubble with a
+check mark) and switches to the next: everything, chat only, answers only (`t`,
+`a`). Chat only hides tool calls, thinking and notices:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/chat-dark.png">
@@ -127,8 +129,9 @@ session list is grouped by folder:
 
 Press `?` or Ctrl-K, or click ⋯, for a list of all commands with their keys; type
 to filter it, and pick one with the arrow keys and Enter or with the mouse.
-Buttons above the commands set the text size of the conversation (`+`, `-`) and
-switch between a centered column and the full width of the window (`w`).
+Buttons above the commands set the text size of the conversation (`+`, `-`),
+switch between a centered column and the full width of the window (`w`), and pick
+the light or dark theme.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/palette-dark.png">
@@ -155,7 +158,7 @@ Description=ah: web viewer for Claude Code, Codex and pi sessions
 After=network-online.target
 
 [Service]
-ExecStart=%h/.cargo/bin/ah serve
+ExecStart=%h/.local/bin/ah serve
 Restart=always
 RestartSec=5
 
@@ -168,8 +171,57 @@ systemctl --user enable --now ah
 loginctl enable-linger "$USER"   # keep it running while logged out
 ```
 
-`ah serve` exits when the machine has no Tailscale address, and systemd retries
-until one appears.
+With Cargo, `ah` is in `~/.cargo/bin` instead. `ah serve` exits when the machine
+has no Tailscale address and no public host name (below), and systemd retries
+until an address appears.
+
+## Access from anywhere
+
+`ah serve` can also answer on a host name of your own through
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/),
+over HTTPS and without opening a port. Browsers there sign in with a link; the
+tailnet and 127.0.0.1 need no sign-in, as before.
+
+1. In the Cloudflare dashboard, under Networking › Tunnels, create a tunnel and
+   give it a public hostname, such as `ah.example.com`, whose service is
+   `http://localhost:7448`.
+2. Install `cloudflared` and run the tunnel as a service with its token:
+   `sudo cloudflared service install <token>`.
+3. Name the host in `~/.config/ah/config.toml` and restart `ah serve`:
+
+   ```toml
+   [public]
+   host = "ah.example.com"
+   ```
+
+`ah serve` then also listens on 127.0.0.1:7448 for the tunnel, and runs without a
+Tailscale address.
+
+To sign in, run `ah login` on the machine. It prints a link, with a QR code for a
+phone, that works for 10 minutes; a browser that opens it and confirms stays
+signed in for 30 days. A browser on the tailnet, or one already signed in, shows such a link for
+another device with "Sign in on another device" in the command list. Deleting
+`~/.local/share/ah/key` and restarting `ah serve` signs every browser out.
+
+### Sharing a session
+
+With a public host name, the share button at the top right of a session, or `s`
+in the terminal, makes a link to the session as it is now. The link shows the
+chat (the prompts and the agent's messages) or the answers (the prompts and the
+final answer of each turn); tool calls, thinking and the session's folder never go
+into it. It works for 1, 7 or 30 days, or until you stop it. Read what you share
+first: prompts and answers can contain keys, tokens or private paths.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/share-dark.png">
+  <img src="docs/share-light.png" alt="A shared session as a guest sees it: the prompts and the agent's messages, without the session list, and a line about ah at the bottom">
+</picture>
+
+Whoever opens the link sees the conversation without the session list, and search
+engines are asked not to index it. The share dialog lists the session's open links
+and stops them; `ah share list` and `ah share stop <id>` do the same for all
+sessions. Each link's snapshot is kept in `~/.local/share/ah/shares`, so it stays
+readable after the agent deletes the transcript, for as long as `ah serve` runs.
 
 ## Where sessions come from
 

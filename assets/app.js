@@ -15,6 +15,14 @@ const ICON_COPY = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="
 const ICON_DONE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
 const VIEWS = ['all', 'chat', 'answers'];
 const VIEW_NAMES = { all: 'All', chat: 'Chat', answers: 'Answers' };
+// Everything as rows of messages and tool calls; the chat as a speech bubble; answers as a bubble
+// with a check mark.
+const BUBBLE = 'M3 3h10a1.5 1.5 0 0 1 1.5 1.5v5.5a1.5 1.5 0 0 1-1.5 1.5H7.5L4.5 14v-2.5H3A1.5 1.5 0 0 1 1.5 10V4.5A1.5 1.5 0 0 1 3 3z';
+const VIEW_ICONS = {
+  all: 'M2.5 3.5h11M2.5 6.5h11M5 9.5h8.5M5 12.5h8.5M2.5 9.5h.5M2.5 12.5h.5',
+  chat: BUBBLE,
+  answers: BUBBLE + 'M5.5 7.3l1.7 1.7 3.3-3.3',
+};
 const VIEW_HELP = {
   all: 'Everything, with tool calls folded. Click for chat only (t)',
   chat: 'Chat only: no tool calls, thinking or notices. Click for answers only (a)',
@@ -26,9 +34,14 @@ const conv = $('#conv');
 const ticks = $('#ticks');
 const card = $('#card');
 const narrow = matchMedia('(max-width: 860px)');
+// The id of the shared session this page shows to a guest; unset for the owner's viewer.
+const SHARE = $('meta[name="ah-share"]') ? $('meta[name="ah-share"]').content : '';
+if (SHARE) root.classList.add('shared');
 
 const S = {
   home: '',
+  // The public host name, when a tunnel serves ah on one; sessions can then be shared.
+  public: null,
   sessions: [],
   agent: localStorage.getItem('ah.agent') || '',
   filter: '',
@@ -208,6 +221,7 @@ async function loadSessions() {
   const r = await fetch('api/sessions');
   const d = await r.json();
   S.home = d.home;
+  S.public = d.public;
   S.sessions = d.sessions;
   renderList();
 }
@@ -283,6 +297,7 @@ function followWhileShown() {
     S.listEs = S.es = null;
     return;
   }
+  if (SHARE) return;
   if (!S.listEs) followList(true);
   if (S.cur && !S.es) subscribe();
 }
@@ -311,7 +326,7 @@ function renderHead() {
   document.title = `${m.title} · ah`;
   const live = Date.now() - m.modified < LIVE_MS ? '<span class="dot" title="Active"></span>' : '';
   $('#sub').innerHTML = `${live}${agentIcon(m.agent)}` +
-    `<span title="${esc(m.cwd)}">${esc(tilde(m.cwd))}</span>` +
+    (m.cwd ? `<span title="${esc(m.cwd)}">${esc(tilde(m.cwd))}</span>` : '') +
     (m.model ? `<span>${esc(m.model)}</span>` : '') +
     `<span>${esc(when(m.started))}</span>`;
 }
@@ -330,6 +345,7 @@ async function open(id, target) {
     ticks.innerHTML = '';
     $('#title').textContent = 'ah';
     $('#sub').innerHTML = '';
+    $('#share').hidden = true;
     document.title = 'ah';
     $('#hint').textContent = r.status === 404 ? 'No such session.' : 'Could not load this session.';
     return;
@@ -342,6 +358,7 @@ async function open(id, target) {
   for (const it of snap.items) put(it);
   renderHead();
   buildRail();
+  $('#share').hidden = !S.public;
   for (const row of $$('#list .row')) row.classList.toggle('on', row.dataset.id === id);
   root.classList.remove('side-open');
   const el = target != null && S.cur.els[target];
@@ -740,43 +757,60 @@ function renderSettings() {
   $('#pal-set [data-scale="-1"]').disabled = S.scale === SCALES[0];
   $('#pal-set [data-scale="1"]').disabled = S.scale === SCALES[SCALES.length - 1];
   for (const b of $$('#pal-set [data-wide]')) b.classList.toggle('on', (b.dataset.wide === '1') === S.wide);
+  for (const b of $$('#pal-set [data-theme]')) b.classList.toggle('on', b.dataset.theme === root.dataset.theme);
 }
 
 /** The header button names the current view and switches to the next one. */
 function renderViewButton() {
   const b = $('#view');
-  b.textContent = VIEW_NAMES[S.view];
+  b.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${VIEW_ICONS[S.view]}"/></svg>`;
   b.title = VIEW_HELP[S.view];
+  b.setAttribute('aria-label', VIEW_HELP[S.view]);
   b.classList.toggle('on', S.view !== 'all');
 }
 
 function switchTheme() {
   const t = root.dataset.theme === 'dark' ? 'light' : 'dark';
+  setTheme(t);
+}
+
+function setTheme(t) {
   root.dataset.theme = t;
   localStorage.setItem('ah.theme', t);
+  renderSettings();
 }
 
 // ---------- commands ----------
 
-/** Every command, listed in the command list; `keys` also run them from the keyboard. */
+/**
+ * Every command, listed in the command list; `keys` also run them from the keyboard. Commands
+ * marked `own` are the owner's and are left out of shared pages; `when` limits others.
+ */
 const COMMANDS = [
-  { label: 'Show everything', keys: [], on: () => S.view === 'all', run: () => setView('all') },
-  { label: 'Chat only: hide tool calls, thinking and notices', keys: ['t'], on: () => S.view === 'chat', run: () => setView(S.view === 'chat' ? 'all' : 'chat') },
-  { label: 'Answers only: prompts and final answers', keys: ['a'], on: () => S.view === 'answers', run: () => setView(S.view === 'answers' ? 'all' : 'answers') },
+  { label: 'Show everything', keys: [], own: true, on: () => S.view === 'all', run: () => setView('all') },
+  { label: 'Chat only: hide tool calls, thinking and notices', keys: ['t'], own: true, on: () => S.view === 'chat', run: () => setView(S.view === 'chat' ? 'all' : 'chat') },
+  { label: 'Answers only: prompts and final answers', keys: ['a'], own: true, on: () => S.view === 'answers', run: () => setView(S.view === 'answers' ? 'all' : 'answers') },
+  { label: 'Share this session', keys: [], own: true, when: () => S.public && S.cur, run: openSharing },
   { label: 'Next turn', keys: ['j', ']'], run: () => jump(Math.min(S.on + 1, S.turns.length - 1)) },
   { label: 'Previous turn', keys: ['k', '['], run: prevTurn },
   { label: 'First message', keys: ['g'], run: () => { scroller.scrollTop = 0; } },
   { label: 'Latest message, following new ones', keys: ['G'], run: stick },
-  { label: 'Expand or collapse all tool calls', keys: ['e'], run: toggleAll },
+  { label: 'Expand or collapse all tool calls', keys: ['e'], own: true, run: toggleAll },
   { label: 'Copy the message at the reading line', keys: ['y'], run: copyCurrent },
-  { label: 'Show or hide the sessions', keys: ['s'], run: () => toggleSide() },
-  { label: 'Find a session', keys: ['/'], run: findSession },
-  { label: 'Group the sessions by folder', keys: [], on: () => S.group === 'folder', run: toggleGrouping },
+  { label: 'Show or hide the sessions', keys: ['s'], own: true, run: () => toggleSide() },
+  { label: 'Find a session', keys: ['/'], own: true, run: findSession },
+  { label: 'Group the sessions by folder', keys: [], own: true, on: () => S.group === 'folder', run: toggleGrouping },
   { label: 'Larger text', keys: ['+'], run: () => setScale(1) },
   { label: 'Smaller text', keys: ['-'], run: () => setScale(-1) },
   { label: 'Full width: text across the whole window', keys: ['w'], on: () => S.wide, run: () => setWide(!S.wide) },
   { label: 'Switch between light and dark', keys: [], run: switchTheme },
+  { label: 'Sign in on another device', keys: [], own: true, when: () => S.public, run: openSignin },
 ];
+
+/** The commands this page offers now. */
+function commands() {
+  return COMMANDS.filter(c => !(SHARE && c.own) && (!c.when || c.when()));
+}
 
 const pal = { el: $('#palette'), q: $('#pal-q'), list: $('#pal-list'), shown: [], sel: 0 };
 
@@ -795,7 +829,7 @@ function closePalette() {
 
 function renderPalette() {
   const words = pal.q.value.toLowerCase().split(/\s+/).filter(Boolean);
-  pal.shown = COMMANDS.filter(c => words.every(w => `${c.label} ${c.keys.join(' ')}`.toLowerCase().includes(w)));
+  pal.shown = commands().filter(c => words.every(w => `${c.label} ${c.keys.join(' ')}`.toLowerCase().includes(w)));
   pal.sel = Math.max(0, Math.min(pal.sel, pal.shown.length - 1));
   pal.list.innerHTML = pal.shown.map((c, k) =>
     `<div class="cmd${k === pal.sel ? ' sel' : ''}" data-k="${k}" role="option">` +
@@ -809,6 +843,99 @@ function renderPalette() {
 function runCommand(c) {
   closePalette();
   if (c) c.run();
+}
+
+// ---------- sharing ----------
+
+const sh = { el: $('#sharing'), view: 'chat', days: 7 };
+
+/** The share dialog: pick what the link shows and how long it works, and see the open links. */
+function openSharing() {
+  sh.view = S.view === 'answers' ? 'answers' : 'chat';
+  $('#sh-list').innerHTML = '';
+  renderSharing();
+  sh.el.hidden = false;
+  loadShares();
+}
+
+function renderSharing() {
+  $('#sh-what').textContent = sh.view === 'answers' ? 'the prompts and the final answers' : "the prompts and the agent's messages";
+  for (const b of $$('#sh-view button')) b.classList.toggle('on', b.dataset.v === sh.view);
+  for (const b of $$('#sh-days button')) b.classList.toggle('on', (b.dataset.d ? +b.dataset.d : null) === sh.days);
+}
+
+function sharesUrl() {
+  return `api/s/${encodeURIComponent(S.cur.id)}/shares`;
+}
+
+async function loadShares() {
+  const c = S.cur;
+  const r = await fetch(sharesUrl());
+  if (!r.ok || S.cur !== c) return;
+  const list = await r.json();
+  $('#sh-list').innerHTML = list.length ? '<div class="sh-h">Open links</div>' + list.map(s =>
+    `<div class="shr" data-id="${esc(s.id)}" data-url="${esc(s.url)}">` +
+    `<div class="shr-m">${esc(VIEW_NAMES[s.view])} · ${s.expires ? 'until ' + esc(when(s.expires)) : 'no expiry'}</div>` +
+    `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>` +
+    '<button data-act="copy">Copy</button><button data-act="stop">Stop</button></div>').join('') : '';
+}
+
+async function createShare() {
+  const r = await fetch(sharesUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ view: sh.view, days: sh.days }),
+  });
+  if (!r.ok) return toast('Could not share this session');
+  const s = await r.json();
+  loadShares();
+  copyText(s.url).then(() => toast('Link copied'), () => toast('Link created'));
+}
+
+async function onShareRow(e) {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const row = b.closest('.shr');
+  if (b.dataset.act === 'copy') {
+    copyText(row.dataset.url).then(() => toast('Link copied'), () => toast('Could not copy'));
+    return;
+  }
+  const r = await fetch('api/shares/' + encodeURIComponent(row.dataset.id), { method: 'DELETE' });
+  toast(r.ok || r.status === 404 ? 'Link stopped' : 'Could not stop the link');
+  loadShares();
+}
+
+/** A login link for another device, as a QR code and as text. */
+async function openSignin() {
+  const r = await fetch('api/login-link');
+  if (!r.ok) return toast('Could not make a login link');
+  const d = await r.json();
+  $('#si-qr').innerHTML = d.qr;
+  $('#si-url').textContent = d.url;
+  $('#signin').hidden = false;
+}
+
+function closeModals() {
+  for (const m of $$('.modal')) m.hidden = true;
+}
+
+/** A guest's page: the shared snapshot, without the session list or anything to change it. */
+async function openShare() {
+  $('#hint').textContent = '';
+  const r = await fetch('api/share/' + encodeURIComponent(SHARE));
+  if (!r.ok) {
+    $('#hint').textContent = 'This link has expired or was stopped.';
+    return;
+  }
+  const snap = await r.json();
+  S.view = snap.view;
+  root.classList.add('chat');
+  root.classList.toggle('answers', snap.view === 'answers');
+  S.cur = { id: SHARE, meta: snap.meta, items: [], els: [] };
+  for (const it of snap.items) put(it);
+  renderHead();
+  buildRail();
+  spy();
 }
 
 // ---------- copying a selection as Markdown ----------
@@ -1028,7 +1155,29 @@ function wire() {
     if (f) toggleFolder(f.dataset.cwd);
   });
   $('#cmds').addEventListener('click', openPalette);
-  $('#theme').addEventListener('click', switchTheme);
+  $('#share').addEventListener('click', openSharing);
+  $('#sh-view').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    sh.view = b.dataset.v;
+    renderSharing();
+  });
+  $('#sh-days').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    sh.days = b.dataset.d ? +b.dataset.d : null;
+    renderSharing();
+  });
+  $('#sh-create').addEventListener('click', createShare);
+  $('#sh-list').addEventListener('click', onShareRow);
+  $('#si-copy').addEventListener('click', () => {
+    copyText($('#si-url').textContent).then(() => toast('Link copied'), () => toast('Could not copy'));
+  });
+  for (const m of $$('.modal')) {
+    m.addEventListener('mousedown', e => {
+      if (e.target === m) m.hidden = true;
+    });
+  }
   $('#bottom').addEventListener('click', stick);
   wireGrip();
 
@@ -1112,6 +1261,7 @@ function wire() {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.scale != null) setScale(+b.dataset.scale);
+    else if (b.dataset.theme) setTheme(b.dataset.theme);
     else setWide(b.dataset.wide === '1');
   });
 
@@ -1123,17 +1273,21 @@ function wire() {
       return;
     }
     if (e.target.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    if ($$('.modal').some(m => !m.hidden)) {
+      if (e.key === 'Escape') closeModals();
+      return;
+    }
     if (e.key === 'Escape') {
       root.classList.remove('side-open');
       return;
     }
-    const c = e.key === '?' ? { run: openPalette } : COMMANDS.find(c => c.keys.includes(e.key));
+    const c = e.key === '?' ? { run: openPalette } : commands().find(c => c.keys.includes(e.key));
     if (!c) return;
     e.preventDefault();
     c.run();
   });
 
-  window.addEventListener('hashchange', route);
+  if (!SHARE) window.addEventListener('hashchange', route);
   document.addEventListener('visibilitychange', followWhileShown);
   setInterval(() => {
     renderList();
@@ -1143,6 +1297,7 @@ function wire() {
 
 (async function init() {
   wire();
+  if (SHARE) return openShare();
   await loadSessions();
   if (!document.hidden) followList(false);
   route();

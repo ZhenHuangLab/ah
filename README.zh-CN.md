@@ -5,7 +5,7 @@
 <h1 align="center">ah</h1>
 
 <p align="center">
-  Agent history：在终端里，或在另一台机器的浏览器里，阅读 Claude Code、Codex 和 pi 的会话记录。
+  Agent history：在终端里，或在任何地方的浏览器里，阅读和分享 Claude Code、Codex 和 pi 的会话记录。
 </p>
 
 <p align="center">
@@ -68,6 +68,7 @@ ah path/to.jsonl   # 打开任意记录文件，包括 subagent 的记录
 | `e` | 全部展开或全部收起 |
 | `/` `n` `N` | 搜索 |
 | `y` | 复制当前消息，或复制选中的工具调用 |
+| `s` | 用链接分享对话或回答（见[分享会话](#分享会话)） |
 | 拖动 | 选中文字并复制 |
 | `q` | 返回列表 |
 
@@ -85,7 +86,7 @@ ah serve
 
 它监听本机的 Tailscale 地址（IPv4 和 IPv6）和 127.0.0.1 的 7447 端口，tailnet 中的任何设备都可以打开 `http://<machine>:7447/`。用 `--addr IP:PORT`（可重复）可以指定其他地址。服务没有登录，所以只响应用 IP 地址、`localhost` 或 Tailscale 名称（`machine` 或 `machine.<tailnet>.ts.net`）访问它的请求，这样网页无法通过 DNS 重绑定（DNS rebinding）访问到它。
 
-页面会渲染 Markdown 和数学公式，折叠工具调用（展开时才加载细节），并实时更新。超过两轮的会话在右侧有一条轮次导航：悬停可以预览每一轮，点击即可跳转。页头的按钮显示当前视图的名称，点击切换到下一个视图：全部（All）、仅对话（Chat）、仅回答（Answers），快捷键分别是 `t` 和 `a`。仅对话视图隐藏工具调用、思考过程和提示信息：
+页面会渲染 Markdown 和数学公式，折叠工具调用（展开时才加载细节），并实时更新。超过两轮的会话在右侧有一条轮次导航：悬停可以预览每一轮，点击即可跳转。页头的按钮用图标显示当前视图（几行横线、一个对话气泡、带对勾的对话气泡），点击切换到下一个视图：全部（All）、仅对话（Chat）、仅回答（Answers），快捷键分别是 `t` 和 `a`。仅对话视图隐藏工具调用、思考过程和提示信息：
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/chat-dark.png">
@@ -99,7 +100,7 @@ ah serve
   <img src="docs/answers-light.png" alt="仅回答视图：只有提问和最终回答，左侧的会话列表按文件夹分组">
 </picture>
 
-按 `?` 或 Ctrl-K，或点击 ⋯，可以打开命令列表，里面有所有命令和它们的快捷键；输入文字即可筛选，用方向键加 Enter 或者鼠标选择。命令上方的按钮可以调整对话的字号（`+`、`-`），以及在居中的窄栏和铺满窗口的宽屏之间切换（`w`）。
+按 `?` 或 Ctrl-K，或点击 ⋯，可以打开命令列表，里面有所有命令和它们的快捷键；输入文字即可筛选，用方向键加 Enter 或者鼠标选择。命令上方的按钮可以调整对话的字号（`+`、`-`），在居中的窄栏和铺满窗口的宽屏之间切换（`w`），以及选择亮色或暗色主题。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/palette-dark.png">
@@ -119,7 +120,7 @@ Description=ah: web viewer for Claude Code, Codex and pi sessions
 After=network-online.target
 
 [Service]
-ExecStart=%h/.cargo/bin/ah serve
+ExecStart=%h/.local/bin/ah serve
 Restart=always
 RestartSec=5
 
@@ -132,7 +133,35 @@ systemctl --user enable --now ah
 loginctl enable-linger "$USER"   # 退出登录后也保持运行
 ```
 
-本机没有 Tailscale 地址时，`ah serve` 会退出，systemd 会一直重试，直到地址出现。
+用 Cargo 安装时，`ah` 在 `~/.cargo/bin` 里。本机既没有 Tailscale 地址、也没有配置公网域名（见下文）时，`ah serve` 会退出，systemd 会一直重试，直到地址出现。
+
+## 从任何地方访问
+
+`ah serve` 还可以通过 [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/) 在你自己的域名上提供服务，使用 HTTPS，不需要开放端口。通过这个域名访问的浏览器需要用登录链接登录；从 tailnet 或 127.0.0.1 访问仍然不需要登录。
+
+1. 在 Cloudflare 后台的 Networking › Tunnels 里创建一个隧道，给它添加一个公网主机名，比如 `ah.example.com`，服务填 `http://localhost:7448`。
+2. 安装 `cloudflared`，用隧道的 token 把它装成系统服务：`sudo cloudflared service install <token>`。
+3. 在 `~/.config/ah/config.toml` 里写上这个域名，然后重启 `ah serve`：
+
+   ```toml
+   [public]
+   host = "ah.example.com"
+   ```
+
+之后 `ah serve` 会额外在 127.0.0.1:7448 上监听，供隧道连接；没有 Tailscale 地址时也能运行。
+
+要登录，在这台机器上运行 `ah login`。它会打印一个 10 分钟内有效的链接，并附上方便手机扫描的二维码；在浏览器里打开链接并确认后，会保持登录 30 天。在 tailnet 里的浏览器，或者已经登录的浏览器，可以在命令列表里选择 “Sign in on another device”，为另一台设备显示这样的链接。删除 `~/.local/share/ah/key` 并重启 `ah serve`，所有浏览器都会退出登录。
+
+### 分享会话
+
+配置了公网域名后，点击会话右上角的分享按钮，或者在终端里按 `s`，就能为会话此刻的内容生成一个链接。链接显示对话（提问和 agent 的消息）或回答（提问和每一轮的最终回答）；工具调用、思考过程和会话所在的文件夹都不会包含在内。链接的有效期可以是 1 天、7 天、30 天，或者一直有效直到你停止它。分享之前请先读一遍：提问和回答里可能有密钥、token 或私密路径。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/share-dark.png">
+  <img src="docs/share-light.png" alt="访客看到的分享会话：提问和 agent 的消息，没有会话列表，底部有一行关于 ah 的介绍">
+</picture>
+
+打开链接的人看到的是没有会话列表的对话页面，页面也会要求搜索引擎不要收录。分享对话框会列出这个会话已有的链接，并可以停止它们；`ah share list` 和 `ah share stop <id>` 可以对所有会话做同样的事。每个链接的快照保存在 `~/.local/share/ah/shares` 里，所以即使 agent 删除了原来的记录文件，只要 `ah serve` 在运行，链接就仍然可以打开。
 
 ## 会话文件的位置
 

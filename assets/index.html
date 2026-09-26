@@ -59,9 +59,9 @@
       <h1 id="title">ah</h1>
       <div id="sub"></div>
     </div>
-    <button id="view">All</button>
+    <button id="view" class="icon"></button>
+    <button id="share" class="icon" title="Share this session" aria-label="Share this session" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 10V2.5M5.3 5.2 8 2.5l2.7 2.7M5 7.5h-.7c-.9 0-1.6.7-1.6 1.6v3.3c0 .9.7 1.6 1.6 1.6h7.4c.9 0 1.6-.7 1.6-1.6V9.1c0-.9-.7-1.6-1.6-1.6H11"/></svg></button>
     <button id="cmds" class="icon" title="Commands and shortcuts (?)">⋯</button>
-    <button id="theme" class="icon" title="Switch theme">◐</button>
   </header>
   <div id="scroll">
     <div id="conv"></div>
@@ -75,6 +75,7 @@
   <div id="card" hidden><div class="card-t"></div><div class="card-b"></div><div class="card-w"></div></div>
   <button id="bottom" class="icon" title="Jump to the latest message (G)" hidden>↓</button>
   <div id="toast" hidden></div>
+  <a id="try" href="https://github.com/ZhenHuangLab/ah" target="_blank" rel="noopener"><span class="logo" aria-hidden="true"></span><span>Shared with <b>ah</b>: read and share what your coding agents did.</span><span class="go">Try ah →</span></a>
 </main>
 <div id="palette" hidden>
   <div class="pal" role="dialog" aria-label="Commands">
@@ -89,9 +90,31 @@
         <button tabindex="-1" data-wide="0" title="Centered column (w)" aria-label="Centered column"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.8"/><path d="M5.5 6h5M5.5 8h5M5.5 10h3"/></svg></button>
         <button tabindex="-1" data-wide="1" title="Full width (w)" aria-label="Full width"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.8"/><path d="M3.5 6h9M3.5 8h9M3.5 10h6"/></svg></button>
       </div>
+      <div class="seg" role="group" aria-label="Theme">
+        <button tabindex="-1" data-theme="light" title="Light" aria-label="Light"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.8"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/></svg></button>
+        <button tabindex="-1" data-theme="dark" title="Dark" aria-label="Dark"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 10.1A5.6 5.6 0 0 1 5.9 2.8a5.6 5.6 0 1 0 7.3 7.3z"/></svg></button>
+      </div>
     </div>
     <div id="pal-list" role="listbox"></div>
     <div class="pal-foot">↑↓ choose · enter run · esc close · open with ? or Ctrl K</div>
+  </div>
+</div>
+<div id="sharing" class="modal" hidden>
+  <div class="pal dlg" role="dialog" aria-label="Share this session">
+    <div class="dlg-t">Share this session</div>
+    <p class="dlg-warn">Anyone with the link can read <span id="sh-what"></span> as they are now. Check that they hold no keys, tokens or private paths.</p>
+    <div class="dlg-row"><span>Show</span><div class="seg" id="sh-view"><button data-v="chat">Chat</button><button data-v="answers">Answers</button></div></div>
+    <div class="dlg-row"><span>Expires</span><div class="seg" id="sh-days"><button data-d="1">1d</button><button data-d="7">7d</button><button data-d="30">30d</button><button data-d="">Never</button></div></div>
+    <div class="dlg-row"><button id="sh-create" class="primary">Create link</button></div>
+    <div id="sh-list"></div>
+  </div>
+</div>
+<div id="signin" class="modal" hidden>
+  <div class="pal dlg" role="dialog" aria-label="Sign in on another device">
+    <div class="dlg-t">Sign in on another device</div>
+    <p>Scan the code or open the link on the other device within 10 minutes. It then stays signed in for 30 days.</p>
+    <div id="si-qr"></div>
+    <div class="dlg-row"><code id="si-url"></code><button id="si-copy">Copy</button></div>
   </div>
 </div>
 </body>

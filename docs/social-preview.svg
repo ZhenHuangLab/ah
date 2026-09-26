@@ -47,7 +47,7 @@
 </text>
 <rect x="366" y="386" width="29" height="48" fill="#2df9c0"/>
 <text font-size="18" fill="#7c7c85">
-<tspan x="88" y="480"># read what your coding agents did,</tspan>
+<tspan x="88" y="480"># read and share what your coding agents did,</tspan>
 <tspan x="88" y="506"># in a terminal or in any browser</tspan>
 </text>
 <text x="88" y="552" font-size="18" fill="#d4d4d8">github.com/ZhenHuangLab/ah</text>

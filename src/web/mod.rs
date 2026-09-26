@@ -1,7 +1,8 @@
 //! The web viewer: an HTTP server with a small single-page front end. Sessions are parsed on
 //! first view and kept in sync by a file watcher; pages follow them over server-sent events.
 
-mod render;
+mod public;
+pub mod render;
 
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
@@ -17,7 +18,7 @@ use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{delete, get};
 use axum::{Json, Router};
 use futures_util::stream::{self, Stream};
 use notify::{RecursiveMode, Watcher};
@@ -26,9 +27,12 @@ use serde_json::json;
 use tokio::sync::broadcast::{self, error::RecvError};
 use tower_http::compression::CompressionLayer;
 
+use crate::auth::Key;
 use crate::discover::{self, Roots};
 use crate::live::Live;
 use crate::model::SessionMeta;
+use crate::share::{self, View};
+use public::Access;
 
 #[derive(rust_embed::Embed)]
 #[folder = "assets/"]
@@ -41,6 +45,8 @@ struct AppState {
     index: RwLock<Index>,
     open: Mutex<HashMap<String, Open>>,
     tx: broadcast::Sender<Change>,
+    /// Set when a tunnel serves ah on a public host name.
+    public: Option<Arc<Access>>,
 }
 
 /// A parsed session. Streams hold clones of `live`; idle ones are dropped after a while.
@@ -87,11 +93,16 @@ enum Change {
     Live(String),
 }
 
-pub fn serve(addrs: Vec<SocketAddr>) -> Result<()> {
-    tokio::runtime::Builder::new_multi_thread().enable_all().build()?.block_on(run(addrs))
+/// Serves the viewer on `addrs`, and on the public listener when `host` is the public host name.
+pub fn serve(addrs: Vec<SocketAddr>, host: Option<String>) -> Result<()> {
+    let public = match host {
+        Some(host) => Some(Arc::new(Access { host, key: Key::load()? })),
+        None => None,
+    };
+    tokio::runtime::Builder::new_multi_thread().enable_all().build()?.block_on(run(addrs, public))
 }
 
-async fn run(addrs: Vec<SocketAddr>) -> Result<()> {
+async fn run(addrs: Vec<SocketAddr>, public: Option<Arc<Access>>) -> Result<()> {
     let roots = Roots::detect();
     let list = tokio::task::spawn_blocking({
         let roots = roots.clone();
@@ -103,12 +114,12 @@ async fn run(addrs: Vec<SocketAddr>) -> Result<()> {
         index.insert(m);
     }
     let (tx, _) = broadcast::channel(1024);
-    let st = Arc::new(AppState { roots, index: RwLock::new(index), open: Mutex::new(HashMap::new()), tx });
+    let st = Arc::new(AppState { roots, index: RwLock::new(index), open: Mutex::new(HashMap::new()), tx, public: public.clone() });
     watch(st.clone())?;
 
-    let app = Router::new()
+    // Everything the owner sees; on the public listener it needs the cookie of a login link.
+    let owner = Router::new()
         .route("/", get(|| async { asset("index.html") }))
-        .route("/assets/{*path}", get(|Path(p): Path<String>| async move { asset(&p) }))
         .route("/api/sessions", get(sessions))
         .route("/api/events", get(events))
         .route("/api/s/{id}", get(session))
@@ -116,15 +127,31 @@ async fn run(addrs: Vec<SocketAddr>) -> Result<()> {
         .route("/api/s/{id}/block/{item}/{block}", get(block))
         .route("/api/s/{id}/run/{item}/{block}", get(run_rows))
         .route("/api/s/{id}/img/{item}/{block}", get(image))
-        .layer(CompressionLayer::new())
-        .layer(middleware::from_fn(check_host))
-        .with_state(st);
+        .route("/api/s/{id}/shares", get(shares).post(create_share))
+        .route("/api/shares/{share}", delete(stop_share))
+        .route("/api/login-link", get(login_link));
+    let assets = Router::new().route("/assets/{*path}", get(|Path(p): Path<String>| async move { asset(&p) }));
+
+    let app =
+        owner.clone().merge(assets.clone()).layer(CompressionLayer::new()).layer(middleware::from_fn(check_host)).with_state(st.clone());
+    let mut listeners = Vec::new();
+    for addr in addrs {
+        listeners.push((addr, app.clone()));
+    }
+    if let Some(access) = public {
+        let app = public::open(access.clone())
+            .merge(owner.route_layer(middleware::from_fn_with_state(access.clone(), public::signed_in)))
+            .merge(assets)
+            .layer(CompressionLayer::new())
+            .with_state(st);
+        listeners.push((SocketAddr::from((Ipv4Addr::LOCALHOST, public::PORT)), app));
+        eprintln!("ah: https://{} reaches the listener on port {} through the tunnel", access.host, public::PORT);
+    }
 
     let mut servers = Vec::new();
-    for addr in addrs {
+    for (addr, app) in listeners {
         let listener = tokio::net::TcpListener::bind(addr).await.with_context(|| format!("listening on {addr}"))?;
         eprintln!("ah: serving http://{addr}/");
-        let app = app.clone();
         servers.push(tokio::spawn(async move { axum::serve(listener, app).await }));
     }
     tokio::select! {
@@ -272,7 +299,7 @@ async fn sessions(State(st): State<Shared>) -> Json<serde_json::Value> {
     let mut list: Vec<SessionMeta> = st.index.read().unwrap().by_id.values().cloned().collect();
     list.sort_by_key(|m| std::cmp::Reverse(m.modified));
     let home = std::env::var("HOME").unwrap_or_default();
-    Json(json!({ "home": home, "sessions": list }))
+    Json(json!({ "home": home, "public": st.public.as_ref().map(|p| &p.host), "sessions": list }))
 }
 
 /// An event stream. Pages cannot see SSE comments, so the keep-alive is a `ping` event: a page
@@ -412,4 +439,57 @@ async fn image(
         Ok((headers, bytes).into_response())
     })
     .await
+}
+
+/// The public host name, which shares and login links need.
+fn host(st: &AppState) -> Result<&str, StatusCode> {
+    st.public.as_ref().map(|p| p.host.as_str()).ok_or(StatusCode::NOT_FOUND)
+}
+
+/// Open shares of a session.
+async fn shares(State(st): State<Shared>, Path(id): Path<String>) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
+    blocking(move || {
+        let host = host(&st)?;
+        let list = share::list().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        Ok(Json(list.iter().filter(|s| s.session == id).map(|s| s.summary(host)).collect()))
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+struct NewShare {
+    view: View,
+    /// None for a share that lasts until stopped.
+    days: Option<u32>,
+}
+
+async fn create_share(
+    State(st): State<Shared>,
+    Path(id): Path<String>,
+    Json(req): Json<NewShare>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    blocking(move || {
+        let host = host(&st)?;
+        let live = st.live(&id)?;
+        let s = share::create(&live.lock().unwrap(), req.view, req.days).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        Ok(Json(s.summary(host)))
+    })
+    .await
+}
+
+async fn stop_share(Path(id): Path<String>) -> StatusCode {
+    match tokio::task::spawn_blocking(move || share::stop(&id)).await {
+        Ok(Ok(true)) => StatusCode::NO_CONTENT,
+        Ok(Ok(false)) => StatusCode::NOT_FOUND,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+/// A login link for another device, with its QR code.
+async fn login_link(State(st): State<Shared>) -> Result<Json<serde_json::Value>, StatusCode> {
+    let p = st.public.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    let url = p.key.login_link(&p.host);
+    let qr = qrcode::QrCode::new(&url).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let svg = qr.render::<qrcode::render::svg::Color>().quiet_zone(true).min_dimensions(200, 200).build();
+    Ok(Json(json!({ "url": url, "qr": svg })))
 }

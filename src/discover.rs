@@ -21,7 +21,7 @@ pub struct Roots {
     pub pi: Option<PathBuf>,
 }
 
-fn env_dir(var: &str) -> Option<PathBuf> {
+pub fn env_dir(var: &str) -> Option<PathBuf> {
     std::env::var_os(var).filter(|v| !v.is_empty()).map(PathBuf::from)
 }
 

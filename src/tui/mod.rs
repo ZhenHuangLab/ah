@@ -30,18 +30,20 @@ struct App {
     viewer: Option<Viewer>,
     /// Opened straight from the command line: leaving the view quits.
     direct: bool,
+    /// The public host name, which share links need.
+    host: Option<String>,
 }
 
-pub fn run(query: Option<&str>) -> Result<()> {
+pub fn run(query: Option<&str>, host: Option<&str>) -> Result<()> {
     let roots = Roots::detect();
     let list = discover::scan(&roots);
     let viewer = match query {
-        Some(q) => Some(Viewer::open(discover::resolve(&list, q).map_err(|e| anyhow!(e))?)?),
+        Some(q) => Some(Viewer::open(discover::resolve(&list, q).map_err(|e| anyhow!(e))?, host.map(String::from))?),
         None if list.is_empty() => bail!("no Claude Code, Codex or pi sessions found"),
         None => None,
     };
     let cwd = std::env::current_dir().ok().and_then(|p| p.to_str().map(String::from)).unwrap_or_default();
-    let mut app = App { direct: viewer.is_some(), viewer, picker: Picker::new(list, cwd), roots };
+    let mut app = App { direct: viewer.is_some(), viewer, picker: Picker::new(list, cwd), roots, host: host.map(String::from) };
 
     let (tx, rx) = mpsc::channel::<PathBuf>();
     let mut watcher = discover::watcher(tx)?;
@@ -128,7 +130,7 @@ impl App {
         };
         match pick {
             Pick::Quit => return Ok(true),
-            Pick::Open(m) => match Viewer::open(m) {
+            Pick::Open(m) => match Viewer::open(m, self.host.clone()) {
                 Ok(v) => self.viewer = Some(v),
                 Err(e) => self.picker.msg = Some(format!("{e:#}")),
             },

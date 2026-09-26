@@ -8,6 +8,7 @@ use crate::live::Live;
 use crate::markdown::{escape, plain, to_html};
 use crate::model::{Block, Image, Item, Notice, NoticeKind, Role, Tool};
 use crate::parse::one_line;
+use crate::share::View;
 use crate::tools;
 
 /// Tool output beyond this is cut in the detail view.
@@ -97,6 +98,50 @@ fn item(sid: &str, i: usize, it: &Item, answer: Option<usize>) -> ItemJson {
     ItemJson { i, role: it.role, time: it.text_time.or(it.time), html, texts, answer: answer.is_some(), preview, kind }
 }
 
+/// What a share shows of the session: prompts with their images, and the agent's text in the
+/// chat view or the final answer of each turn in the answers view. Compactions and rewinds keep
+/// their one-line label in the chat view. Items are numbered in the order shown.
+pub fn shared(l: &Live, view: View) -> Vec<ItemJson> {
+    let mut out = Vec::new();
+    for (it, answer) in l.t.items.iter().zip(l.t.answers()) {
+        let mut html = String::new();
+        let mut texts = Vec::new();
+        for (b, block) in it.blocks.iter().enumerate() {
+            match (it.role, block) {
+                (Role::User, Block::Text(s)) => {
+                    html.push_str(&format!("<div class=\"prompt\">{}</div>", escape(s.trim_end())));
+                    texts.push(s.trim().to_string());
+                }
+                (Role::User, Block::Image(img)) if raster(&img.mime) => {
+                    html.push_str(&format!("<img class=\"att\" alt=\"image\" src=\"data:{};base64,{}\">", img.mime, escape(&img.data)));
+                }
+                (Role::Assistant, Block::Text(s)) if !s.trim().is_empty() && (view == View::Chat || answer == Some(b)) => {
+                    html.push_str(if answer == Some(b) { "<div class=\"md final\">" } else { "<div class=\"md\">" });
+                    html.push_str(&to_html(s));
+                    html.push_str("</div>");
+                    texts.push(s.trim().to_string());
+                }
+                (Role::Event, Block::Notice(n)) if view == View::Chat && n.kind.structural() => html.push_str(&notice_label(n)),
+                _ => {}
+            }
+        }
+        if html.is_empty() {
+            continue;
+        }
+        let preview = match it.role {
+            Role::User => one_line(&texts.join("\n\n"), 240),
+            _ => texts.last().map(|s| plain(s, 240)).unwrap_or_default(),
+        };
+        let kind = it.blocks.iter().find_map(|b| match b {
+            Block::Notice(n) => Some(n.kind),
+            _ => None,
+        });
+        let i = out.len();
+        out.push(ItemJson { i, role: it.role, time: it.text_time.or(it.time), html, texts, answer: answer.is_some(), preview, kind });
+    }
+    out
+}
+
 fn thinking(sid: &str, i: usize, b: usize) -> String {
     format!(
         "<details class=\"thinking\" data-k=\"h{b}\" data-src=\"{}\"><summary>Thinking</summary><div class=\"body md\"></div></details>",
@@ -146,15 +191,18 @@ fn src(sid: &str, i: usize, b: usize) -> String {
 }
 
 fn notice(n: &Notice, src: &str) -> String {
-    let kind = n.kind.name();
-    let label = escape(&n.label);
     if n.body.trim().is_empty() {
-        format!("<div class=\"notice {kind}\"><span>{label}</span></div>")
-    } else {
-        format!(
-            "<details class=\"notice {kind}\" data-k=\"n\" data-src=\"{src}\"><summary>{label}</summary><div class=\"body md\"></div></details>"
-        )
+        return notice_label(n);
     }
+    format!(
+        "<details class=\"notice {}\" data-k=\"n\" data-src=\"{src}\"><summary>{}</summary><div class=\"body md\"></div></details>",
+        n.kind.name(),
+        escape(&n.label)
+    )
+}
+
+fn notice_label(n: &Notice) -> String {
+    format!("<div class=\"notice {}\"><span>{}</span></div>", n.kind.name(), escape(&n.label))
 }
 
 /// The expanded content of a foldable block: tool details, thinking or a notice body.
@@ -221,9 +269,13 @@ pub fn image(it: &Item, b: usize, k: Option<usize>) -> Option<(String, Vec<u8>)>
         (Block::Tool(t), Some(k)) => t.output.as_ref()?.images.get(k)?,
         _ => return None,
     };
-    if !matches!(img.mime.as_str(), "image/png" | "image/jpeg" | "image/gif" | "image/webp") {
+    if !raster(&img.mime) {
         return None;
     }
     let bytes = base64::engine::general_purpose::STANDARD.decode(img.data.as_bytes()).ok()?;
     Some((img.mime.clone(), bytes))
+}
+
+fn raster(mime: &str) -> bool {
+    matches!(mime, "image/png" | "image/jpeg" | "image/gif" | "image/webp")
 }

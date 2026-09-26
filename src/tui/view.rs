@@ -18,7 +18,7 @@ use super::text::{Row, truncate, width};
 use super::theme;
 use crate::live::Live;
 use crate::model::{Block, Role, SessionMeta};
-use crate::tools;
+use crate::{share, tools};
 
 pub enum Action {
     None,
@@ -70,11 +70,15 @@ pub struct Viewer {
     search: Option<Search>,
     typing: Option<String>,
     help: bool,
+    /// Asking how long a new share lasts.
+    sharing: bool,
+    /// The public host name, which share links need.
+    host: Option<String>,
     msg: Option<(String, Instant)>,
 }
 
 impl Viewer {
-    pub fn open(meta: SessionMeta) -> Result<Viewer> {
+    pub fn open(meta: SessionMeta, host: Option<String>) -> Result<Viewer> {
         let live = Live::open(meta)?;
         Ok(Viewer {
             generation: live.generation,
@@ -93,6 +97,8 @@ impl Viewer {
             search: None,
             typing: None,
             help: false,
+            sharing: false,
+            host,
             msg: None,
         })
     }
@@ -235,6 +241,16 @@ impl Viewer {
             }
             return Action::None;
         }
+        if std::mem::take(&mut self.sharing) {
+            match k.code {
+                KeyCode::Char('1') => self.share(Some(1)),
+                KeyCode::Char('7') => self.share(Some(7)),
+                KeyCode::Char('3') => self.share(Some(30)),
+                KeyCode::Char('n') => self.share(None),
+                _ => {}
+            }
+            return Action::None;
+        }
         if self.help {
             self.help = false;
             if matches!(k.code, KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q')) {
@@ -273,6 +289,8 @@ impl Viewer {
             KeyCode::Char('n') => self.step_hit(true),
             KeyCode::Char('N') => self.step_hit(false),
             KeyCode::Char('y') => self.copy_item(),
+            KeyCode::Char('s') if self.host.is_some() => self.sharing = true,
+            KeyCode::Char('s') => self.say("to share, set the public host name in ~/.config/ah/config.toml"),
             KeyCode::Char('?') => self.help = true,
             _ => {}
         }
@@ -502,6 +520,23 @@ impl Viewer {
         }
     }
 
+    /// The view a share shows: answers from the answers view, the chat from the others.
+    fn share_view(&self) -> share::View {
+        if self.view == View::Answers { share::View::Answers } else { share::View::Chat }
+    }
+
+    /// Shares the session as it is now for `days`, or until stopped, and copies the link.
+    fn share(&mut self, days: Option<u32>) {
+        let Some(host) = self.host.clone() else { return };
+        match share::create(&self.live, self.share_view(), days) {
+            Ok(s) => {
+                self.copy(&s.url(&host));
+                self.say(format!("copied the share link ({}, expires {})", s.view.name(), s.expiry()));
+            }
+            Err(e) => self.say(format!("sharing failed: {e:#}")),
+        }
+    }
+
     /// Sets the clipboard with OSC 52, which also works over SSH.
     fn copy(&mut self, text: &str) {
         let b64 = base64::engine::general_purpose::STANDARD.encode(text);
@@ -558,7 +593,23 @@ impl Viewer {
         }
         self.draw_bar(buf, area);
         if self.help {
-            draw_help(buf, area);
+            draw_box(buf, area, "keys", HELP);
+        }
+        if self.sharing {
+            let what = match self.share_view() {
+                share::View::Chat => "the agent's messages",
+                share::View::Answers => "the final answers",
+            };
+            let rows = [
+                ("", "Anyone with the link can read the prompts and"),
+                ("", &*format!("{what} as they are now. Check them for keys,")),
+                ("", "tokens and private paths first."),
+                ("", ""),
+                ("1  7  3", "copy a link that lasts 1, 7 or 30 days"),
+                ("n", "copy a link that lasts until stopped"),
+                ("esc", "cancel"),
+            ];
+            draw_box(buf, area, "share this session", &rows);
         }
     }
 
@@ -646,13 +697,16 @@ const HELP: &[(&str, &str)] = &[
     ("e", "expand or collapse all"),
     ("/  n N", "search, next and previous match"),
     ("y", "copy the message (or focused tool)"),
+    ("s", "share the chat or answers by a link"),
     ("drag", "select text and copy it"),
     ("q esc", "back to the list"),
 ];
 
-fn draw_help(buf: &mut Buffer, area: Rect) {
+/// A box over the middle of the screen: a title, then rows of keys and what they do, or of
+/// text alone when the keys are empty.
+fn draw_box(buf: &mut Buffer, area: Rect, title: &str, rows: &[(&str, &str)]) {
     let w = 64.min(area.width);
-    let h = (HELP.len() as u16 + 4).min(area.height);
+    let h = (rows.len() as u16 + 4).min(area.height);
     if w < 8 || h < 3 {
         return;
     }
@@ -661,11 +715,15 @@ fn draw_help(buf: &mut Buffer, area: Rect) {
     for y in r.y..r.bottom() {
         buf.set_stringn(r.x, y, " ".repeat(w as usize), w as usize, theme::BAR);
     }
-    buf.set_stringn(r.x + 2, r.y + 1, "keys", w as usize - 4, theme::BAR_KEY);
-    for (k, (keys, what)) in HELP.iter().enumerate() {
+    buf.set_stringn(r.x + 2, r.y + 1, title, w as usize - 4, theme::BAR_KEY);
+    for (k, (keys, what)) in rows.iter().enumerate() {
         let y = r.y + 2 + k as u16;
         if y + 1 >= r.bottom() {
             break;
+        }
+        if keys.is_empty() {
+            buf.set_stringn(r.x + 2, y, what, w as usize - 4, theme::BAR);
+            continue;
         }
         buf.set_stringn(r.x + 2, y, keys, (w as usize - 4).min(22), theme::BAR_KEY);
         buf.set_stringn(r.x + 24, y, what, w.saturating_sub(26) as usize, theme::BAR);
