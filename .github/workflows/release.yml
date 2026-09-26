@@ -72,5 +72,22 @@ jobs:
             END { for (i = 1; i <= n; i++) print line[i] }
           ' CHANGELOG.md > notes.md
           grep -q . notes.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          cat >> notes.md <<EOF
+          ## Install
+
+          Binaries are attached for macOS (Apple Silicon and Intel) and Linux (x86_64 and ARM64). The Linux ones are statically linked and run on any distribution:
+
+          \`\`\`sh
+          target=aarch64-apple-darwin  # or x86_64-apple-darwin, x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
+          mkdir -p ~/.local/bin
+          curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/ah-\$target.tar.gz | tar xz -C ~/.local/bin ah
+          \`\`\`
+
+          With Cargo, on any platform:
+
+          \`\`\`sh
+          cargo install --git https://github.com/${GITHUB_REPOSITORY} --tag $TAG
+          \`\`\`
+          EOF
           gh release create "$TAG" --verify-tag --title "ah $version" --notes-file notes.md
       - run: gh release upload "$TAG" dist/* --clobber
