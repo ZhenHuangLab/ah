@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 
-use super::{Parser, data_url, iso_ms, output, take, take_str, ts};
+use super::{Parser, data_url, fence, iso_ms, output, tag, take, take_str, ts};
 use crate::model::{Block, Image, NoticeKind, Role, Transcript};
 
 /// User-role messages that Codex injects as context rather than typed prompts.
@@ -17,6 +17,8 @@ const INJECTED: &[&str] = &[
     "<turn_aborted>",
     "<permissions instructions>",
     "<collaboration_mode>",
+    "<skill>",
+    "<subagent_notification>",
 ];
 
 #[derive(Default)]
@@ -120,6 +122,17 @@ fn message(t: &mut Transcript, time: Option<i64>, mut p: Value) {
     }
     match role.as_str() {
         "user" => {
+            // A `!cmd` run is recorded as a user message holding the command and its output.
+            texts.retain(|s| {
+                let Some(run) = tag(s, "user_shell_command").filter(|_| s.trim_start().starts_with("<user_shell_command>")) else {
+                    return true;
+                };
+                let cmd = tag(run, "command").unwrap_or("").trim();
+                let out = tag(run, "result").unwrap_or("");
+                let body = if out.trim().is_empty() { String::new() } else { fence(out, "") };
+                t.notice(time, NoticeKind::Shell, format!("! {cmd}"), body);
+                false
+            });
             texts.retain(|s| {
                 let s = s.trim_start();
                 !s.is_empty() && !INJECTED.iter().any(|p| s.starts_with(p))
