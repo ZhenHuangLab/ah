@@ -100,7 +100,7 @@ ah serve
   <img src="docs/answers-light.png" alt="仅回答视图：只有提问和最终回答，左侧的会话列表按文件夹分组">
 </picture>
 
-按 `?` 或 Ctrl-K，或点击 ⋯，可以打开命令列表，里面有所有命令和它们的快捷键；输入文字即可筛选，用方向键加 Enter 或者鼠标选择。命令上方的按钮可以调整对话的字号（`+`、`-`），在居中的窄栏和铺满窗口的宽屏之间切换（`w`），以及选择亮色或暗色主题。
+按 `?` 或 Ctrl-K，或点击 ⋯，可以打开命令列表，里面有所有命令和它们的快捷键；输入文字即可筛选，用方向键加 Enter 或者鼠标选择。命令上方的按钮可以调整对话的字号（`+`、`-`），在居中的窄栏和铺满窗口的宽屏之间切换（`w`），选择亮色或暗色主题、简约或像素风格（用像素画出的方角边框和硬阴影），以及字体：无衬线、等宽或像素字体。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/palette-dark.png">
@@ -175,7 +175,7 @@ loginctl enable-linger "$USER"   # 退出登录后也保持运行
 
 ## 许可证
 
-MIT，见 [LICENSE](LICENSE)。`assets/vendor` 中包含 KaTeX（MIT）和 highlight.js（BSD-3-Clause）以及它们的许可证文件。截图中的会话都是虚构的。
+MIT，见 [LICENSE](LICENSE)。`assets/vendor` 中包含 KaTeX（MIT）、highlight.js（BSD-3-Clause）和 Pixelify Sans 字体（SIL Open Font License 1.1）以及它们的许可证文件。截图中的会话都是虚构的。
 
 ## 致谢
 

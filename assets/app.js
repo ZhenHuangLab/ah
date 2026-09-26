@@ -751,6 +751,27 @@ function setWide(wide) {
   renderSettings();
 }
 
+/**
+ * Moves the highlight of a group of buttons under its selected one. Hidden groups are left for
+ * when they show, and the first placement does not slide.
+ */
+function slide(group) {
+  if (!group.offsetParent) return;
+  const on = $('button.on', group);
+  const first = !group.style.getPropertyValue('--w');
+  if (first) group.classList.add('still');
+  group.style.setProperty('--x', (on ? on.offsetLeft : 0) + 'px');
+  group.style.setProperty('--w', (on ? on.offsetWidth : 0) + 'px');
+  if (first) {
+    void group.offsetWidth;
+    group.classList.remove('still');
+  }
+}
+
+function slideAll() {
+  for (const g of $$('.slide')) slide(g);
+}
+
 /** The text size and width controls at the top of the command list. */
 function renderSettings() {
   $('#pal-scale').textContent = Math.round(S.scale * 100) + '%';
@@ -758,6 +779,9 @@ function renderSettings() {
   $('#pal-set [data-scale="1"]').disabled = S.scale === SCALES[SCALES.length - 1];
   for (const b of $$('#pal-set [data-wide]')) b.classList.toggle('on', (b.dataset.wide === '1') === S.wide);
   for (const b of $$('#pal-set [data-theme]')) b.classList.toggle('on', b.dataset.theme === root.dataset.theme);
+  for (const b of $$('#pal-set [data-look]')) b.classList.toggle('on', b.dataset.look === (root.dataset.style || 'minimal'));
+  for (const b of $$('#pal-set [data-face]')) b.classList.toggle('on', b.dataset.face === (root.dataset.font || 'sans'));
+  for (const g of $$('#pal-set .slide')) slide(g);
 }
 
 /** The header button names the current view and switches to the next one. */
@@ -772,6 +796,27 @@ function renderViewButton() {
 function switchTheme() {
   const t = root.dataset.theme === 'dark' ? 'light' : 'dark';
   setTheme(t);
+}
+
+/** The minimal style, or the pixel style: square edges drawn in pixels and hard shadows. */
+function setLook(look) {
+  keepPlace(() => {
+    if (look === 'pixel') root.dataset.style = 'pixel';
+    else delete root.dataset.style;
+    localStorage.setItem('ah.style', look);
+  });
+  renderSettings();
+}
+
+/** The font of the page and the conversation: sans-serif, monospace or pixel. */
+function setFont(face) {
+  keepPlace(() => {
+    if (face === 'sans') delete root.dataset.font;
+    else root.dataset.font = face;
+    localStorage.setItem('ah.font', face);
+  });
+  renderSettings();
+  slideAll();
 }
 
 function setTheme(t) {
@@ -804,6 +849,7 @@ const COMMANDS = [
   { label: 'Smaller text', keys: ['-'], run: () => setScale(-1) },
   { label: 'Full width: text across the whole window', keys: ['w'], on: () => S.wide, run: () => setWide(!S.wide) },
   { label: 'Switch between light and dark', keys: [], run: switchTheme },
+  { label: 'Pixel style: square edges drawn in pixels', keys: [], on: () => root.dataset.style === 'pixel', run: () => setLook(root.dataset.style === 'pixel' ? 'minimal' : 'pixel') },
   { label: 'Sign in on another device', keys: [], own: true, when: () => S.public, run: openSignin },
 ];
 
@@ -853,8 +899,8 @@ const sh = { el: $('#sharing'), view: 'chat', days: 7 };
 function openSharing() {
   sh.view = S.view === 'answers' ? 'answers' : 'chat';
   $('#sh-list').innerHTML = '';
-  renderSharing();
   sh.el.hidden = false;
+  renderSharing();
   loadShares();
 }
 
@@ -862,6 +908,8 @@ function renderSharing() {
   $('#sh-what').textContent = sh.view === 'answers' ? 'the prompts and the final answers' : "the prompts and the agent's messages";
   for (const b of $$('#sh-view button')) b.classList.toggle('on', b.dataset.v === sh.view);
   for (const b of $$('#sh-days button')) b.classList.toggle('on', (b.dataset.d ? +b.dataset.d : null) === sh.days);
+  slide($('#sh-view'));
+  slide($('#sh-days'));
 }
 
 function sharesUrl() {
@@ -1131,6 +1179,9 @@ function wireGrip() {
 
 function wire() {
   for (const b of $$('#agents button')) b.classList.toggle('on', b.dataset.agent === S.agent);
+  slide($('#agents'));
+  // Buttons change width when a font arrives.
+  document.fonts.addEventListener('loadingdone', slideAll);
   renderViewButton();
   $('#agents').addEventListener('click', e => {
     const b = e.target.closest('button');
@@ -1138,6 +1189,7 @@ function wire() {
     S.agent = b.dataset.agent;
     localStorage.setItem('ah.agent', S.agent);
     for (const x of $$('#agents button')) x.classList.toggle('on', x === b);
+    slide($('#agents'));
     renderList();
   });
   $('#filter').addEventListener('input', e => {
@@ -1262,6 +1314,8 @@ function wire() {
     if (!b) return;
     if (b.dataset.scale != null) setScale(+b.dataset.scale);
     else if (b.dataset.theme) setTheme(b.dataset.theme);
+    else if (b.dataset.look) setLook(b.dataset.look);
+    else if (b.dataset.face) setFont(b.dataset.face);
     else setWide(b.dataset.wide === '1');
   });
 

@@ -17,7 +17,7 @@
   --logo: #1f2328;
   --shadow: 0 10px 30px rgba(15, 23, 42, .12), 0 1px 3px rgba(15, 23, 42, .08);
   --backdrop: rgba(15, 23, 42, .28);
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", "Noto Sans Mono CJK SC", monospace;
   /* Text size of the conversation, set in the command list; its column widens with it */
   --scale: 1;
@@ -55,7 +55,7 @@ body {
   display: flex;
   background: var(--bg);
   color: var(--fg);
-  font: 15.5px/1.7 var(--font);
+  font: 15.5px/1.7 var(--sans);
   -webkit-font-smoothing: antialiased;
 }
 button {
@@ -111,7 +111,7 @@ a { color: var(--accent); }
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 12px 8px; }
 #agents { display: flex; gap: 4px; }
 #agents button, #group { display: inline-flex; align-items: center; height: 24px; border: none; font-size: 12.5px; padding: 0 9px; border-radius: 999px; color: var(--muted); }
-#agents button.on { background: var(--sel); color: var(--fg); }
+#agents button.on { color: var(--fg); }
 #agents .ico { width: 15px; height: 15px; color: var(--fg); }
 #agents button:not(.on):not(:hover) .ico { opacity: .55; }
 #group { margin-left: auto; white-space: nowrap; }
@@ -411,11 +411,30 @@ details.notice .md { font-size: calc(14px * var(--scale)); color: var(--muted); 
 .pal { width: min(560px, 92vw); max-height: 72vh; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
 #pal-q { font: inherit; font-size: 15px; color: inherit; background: none; border: none; border-bottom: 1px solid var(--line); padding: 12px 16px; outline: none; }
 /* Text size and width: buttons that keep the command list open */
-#pal-set { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+#pal-set { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 12px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 .seg { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 9px; }
 .seg button { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 28px; padding: 0 8px; border: none; border-radius: 7px; color: var(--muted); line-height: 1; }
 .seg button:hover { color: var(--fg); }
-.seg button.on { background: var(--sel); color: var(--fg); }
+.seg button.on { color: var(--fg); }
+
+/* Groups with one selected button: its highlight slides to the one picked next */
+.slide { position: relative; isolation: isolate; }
+.slide::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 2px;
+  bottom: 2px;
+  left: var(--x, 0);
+  width: var(--w, 0);
+  border-radius: 7px;
+  background: var(--sel);
+  transition: left .22s cubic-bezier(.3, .7, .3, 1), width .22s cubic-bezier(.3, .7, .3, 1);
+}
+.slide.still::before { transition: none; }
+.slide > button { transition: color .22s; }
+.slide > button.on:hover { background: none; }
+#agents.slide::before { top: 0; bottom: 0; border-radius: 999px; }
 .seg button:disabled { opacity: .35; background: none; cursor: default; }
 .seg svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
 #pal-scale { min-width: 54px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
@@ -474,6 +493,7 @@ kbd { font-family: var(--mono); font-size: 12px; min-width: 22px; text-align: ce
 
 @media (prefers-reduced-motion: reduce) {
   .slogan::after { animation: none; }
+  .slide::before, .slide > button { transition: none; }
 }
 
 /* Sharing and signing in on another device: dialogs over a backdrop, like the command list */
@@ -511,3 +531,40 @@ button.primary:hover { background: var(--fg); opacity: .85; }
 @media (max-width: 860px) {
   .shared #try { font-size: 12px; gap: 8px; }
 }
+
+/* Fonts for the page and the conversation alike; code stays monospace. Pixelify Sans is under the
+   SIL Open Font License, in vendor/pixelify. */
+@font-face { font-family: "Pixelify Sans"; src: url(vendor/pixelify/PixelifySans.woff2) format("woff2"); font-weight: 400 700; font-display: swap; }
+html[data-font=mono] body { font-family: var(--mono); }
+html[data-font=pixel] body { font-family: "Pixelify Sans", var(--sans); }
+.seg [data-face] { min-width: 38px; font-size: 14px; }
+.seg [data-face=sans] { font-family: var(--sans); }
+.seg [data-face=mono] { font-family: var(--mono); }
+.seg [data-face=pixel] { font-family: "Pixelify Sans", var(--sans); }
+
+/* Pixel style: edges drawn in whole pixels with notched corners, hard shadows under what floats,
+   and the selection in inverted colors */
+.seg svg.px { stroke-linejoin: miter; stroke-linecap: butt; }
+[data-style=pixel] {
+  --px-line: var(--faint);
+  --px-edge: 0 -2px var(--px-line), 0 2px var(--px-line), -2px 0 var(--px-line), 2px 0 var(--px-line);
+  --px-float: 0 -2px var(--fg), 0 2px var(--fg), -2px 0 var(--fg), 2px 0 var(--fg), 6px 6px 0 2px var(--px-drop);
+  --px-drop: rgba(15, 23, 42, .22);
+}
+[data-style=pixel][data-theme=dark] { --px-drop: rgba(0, 0, 0, .6); }
+[data-style=pixel] *, [data-style=pixel] *::before, [data-style=pixel] *::after { border-radius: 0 !important; }
+[data-style=pixel] :is(.prompt, .md pre, .tool-body pre, .att, #filter, .seg, .shr button, #si-copy, .dlg-warn) { border: none; box-shadow: var(--px-edge); }
+[data-style=pixel] .prompt { margin-right: 6px; box-shadow: var(--px-edge), 5px 5px 0 2px var(--px-drop); }
+[data-style=pixel] .md code { box-shadow: 0 -1px var(--line), 0 1px var(--line), -1px 0 var(--line), 1px 0 var(--line); }
+[data-style=pixel] .md pre code { box-shadow: none; }
+[data-style=pixel] #filter:focus { --px-line: var(--accent); }
+[data-style=pixel] :is(.pal, #toast, #card, #bottom) { border: none; box-shadow: var(--px-float); }
+[data-style=pixel] #toast { color: var(--fg); background: var(--bg); }
+[data-style=pixel] :is(.cmd.sel, button.primary) { background: var(--fg); color: var(--bg); }
+[data-style=pixel] .slide::before { background: var(--fg); }
+[data-style=pixel] :is(.seg button.on, #agents button.on) { color: var(--bg); }
+[data-style=pixel] #agents button.on .ico { color: var(--bg); }
+[data-style=pixel] .row.on { box-shadow: var(--px-edge); }
+[data-style=pixel] .notice.compaction > summary, [data-style=pixel] .notice.rewind > summary,
+[data-style=pixel] .notice.compaction > span, [data-style=pixel] .notice.rewind > span { border-style: dashed; border-width: 2px; }
+[data-style=pixel] .tool-list, [data-style=pixel] .thinking .md, [data-style=pixel] details.notice .md { border-left-style: dotted; }

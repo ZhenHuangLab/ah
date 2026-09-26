@@ -131,7 +131,8 @@ Press `?` or Ctrl-K, or click ⋯, for a list of all commands with their keys; t
 to filter it, and pick one with the arrow keys and Enter or with the mouse.
 Buttons above the commands set the text size of the conversation (`+`, `-`),
 switch between a centered column and the full width of the window (`w`), and pick
-the light or dark theme.
+the light or dark theme, the minimal or pixel style (square edges drawn in pixels,
+with hard shadows), and the font: sans-serif, monospace or pixel.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/palette-dark.png">
@@ -238,8 +239,9 @@ conversation resumes.
 
 ## License
 
-MIT; see [LICENSE](LICENSE). `assets/vendor` contains KaTeX (MIT) and
-highlight.js (BSD-3-Clause) with their license files. The screenshots show
+MIT; see [LICENSE](LICENSE). `assets/vendor` contains KaTeX (MIT), highlight.js
+(BSD-3-Clause) and the Pixelify Sans font (SIL Open Font License 1.1) with their
+license files. The screenshots show
 invented sessions.
 
 ## Acknowledgments
