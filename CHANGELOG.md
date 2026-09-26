@@ -3,6 +3,12 @@
 Versions follow [Semantic Versioning](https://semver.org/). Each release is tagged `vX.Y.Z`, and
 `ah --version` prints the version of the installed binary.
 
+## 0.3.1 (2026-09-26)
+
+- Prevent requests from reading files outside the asset directory in debug builds.
+- Disable HTTP caching for private sessions, login links and shared snapshots.
+- Close public event streams when their login session expires.
+
 ## 0.3.0 (2026-09-26)
 
 - Each release has binaries for macOS (Apple Silicon and Intel) and Linux (x86_64 and ARM64); the
